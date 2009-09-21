@@ -19,6 +19,7 @@
 #ifndef __MIXER_H__
 #define __MIXER_H__
 
+#include <sega_mem.h>
 #include "intern.h"
 
 struct MixerChunk {
@@ -40,6 +41,16 @@ struct Serializer;
 struct SystemStub;
 
 struct Mixer {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	enum {
 		NUM_CHANNELS = 4
 	};

@@ -20,6 +20,7 @@
 #define __LOGIC_H__
 
 #include "intern.h"
+#include <sega_mem.h>
 
 struct Mixer;
 struct Resource;
@@ -29,6 +30,16 @@ struct SystemStub;
 struct Video;
 
 struct Logic {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	typedef void (Logic::*OpcodeStub)();
 
 	enum ScriptVars {

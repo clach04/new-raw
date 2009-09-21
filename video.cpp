@@ -16,6 +16,9 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#include <sl_def.h>
+#include <sega_mem.h>
+
 #include "video.h"
 #include "resource.h"
 #include "serializer.h"
@@ -439,7 +442,7 @@ void Video::copyPagePtr(const uint8 *src) {
 }
 
 uint8 *Video::allocPage() {
-	uint8 *buf = (uint8 *)malloc(VID_PAGE_SIZE);
+	uint8 *buf = (uint8 *)MEM_Malloc(VID_PAGE_SIZE);
 	memset(buf, 0, VID_PAGE_SIZE);
 	return buf;
 }

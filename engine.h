@@ -29,6 +29,16 @@
 struct SystemStub;
 
 struct Engine {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	enum {
 		MAX_SAVE_SLOTS = 100
 	};

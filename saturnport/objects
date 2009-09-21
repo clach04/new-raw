@@ -1,0 +1,21 @@
+SRCS = 	$(SRCDIR)/gfs_wrap.cpp \
+		$(SRCDIR)/saturn_print.cpp \
+		$(SRCDIR)/bank.cpp \
+		$(SRCDIR)/file.cpp \
+		$(SRCDIR)/engine.cpp \
+		$(SRCDIR)/logic.cpp \
+		$(SRCDIR)/mixer.cpp \
+		$(SRCDIR)/resource.cpp \
+		$(SRCDIR)/sdlstub.cpp \
+		$(SRCDIR)/serializer.cpp \
+		$(SRCDIR)/sfxplayer.cpp \
+		$(SRCDIR)/staticres.cpp \
+		$(SRCDIR)/util.cpp \
+		$(SRCDIR)/video.cpp \
+		$(SRCDIR)/cinit.cpp \
+		$(SRCDIR)/main.cpp 
+
+SYSOBJS = $(SGLLDR)/sglarea.o
+OBJS = $(SRCS:.cpp=.o)
+LIBS = $(SGLLDR)/sega_sys.a -lpcm -lsnd -lmem -lper -lint -lcd -lsgl
+

@@ -41,6 +41,16 @@ struct PlayerInput {
 };
 
 struct SystemStub {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	typedef void (*AudioCallback)(void *param, uint8 *stream, int len);
 	typedef uint32 (*TimerCallback)(uint32 delay, void *param);
 	
@@ -69,6 +79,10 @@ struct SystemStub {
 	virtual void destroyMutex(void *mutex) = 0;
 	virtual void lockMutex(void *mutex) = 0;
 	virtual void unlockMutex(void *mutex) = 0;
+	
+	virtual	void checkTimers(void) = 0;
+	virtual void fadePal(void) = 0;
+	virtual void restorePal(void) = 0;
 };
 
 struct MutexStack {

@@ -19,6 +19,8 @@
 #ifndef __SFXPLAYER_H__
 #define __SFXPLAYER_H__
 
+#include <sega_mem.h>
+
 #include "intern.h"
 
 struct SfxInstrument {
@@ -53,6 +55,16 @@ struct Serializer;
 struct SystemStub;
 
 struct SfxPlayer {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	Mixer *_mix;
 	Resource *_res;
 	SystemStub *_stub;

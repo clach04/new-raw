@@ -19,6 +19,8 @@
 #ifndef __RESOURCE_H__
 #define __RESOURCE_H__
 
+#include <sega_mem.h>
+
 #include "intern.h"
 
 struct MemEntry {
@@ -39,6 +41,16 @@ struct Serializer;
 struct Video;
 
 struct Resource {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	enum ResType {
 		RT_SOUND  = 0,
 		RT_MUSIC  = 1,

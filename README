@@ -1,60 +1,71 @@
+RAW - Rewritten Another World engine for SEGA SATURN.
 
-raw README
-Release version: 0.1.1 (May 15 2004)
--------------------------------------------------------------------------------
+This is a BETA version of RAW port to SEGA SATURN game console,
+with this you will be able to play "Another World" ("Out of this
+World" in USA) game on your favourite console :-)
 
-About:
-------
+YOU WILL NEED THE ORIGINAL DATAFILES OF THE GAME TO PLAY WITH THIS PORT!!!
 
-raw is a re-implementation of the engine used in the game Another World. This 
-game, released under the name Out Of This World in non-European countries, was 
-written by Eric Chahi at the beginning of the '90s. More information can be 
-found here : http://www.mobygames.com/game/sheet/p,2/gameId,564/.
+Provided in the archive is the modified source code for the saturn port
+and two binaries:
+raw_cd.bin  -> You can use this to build your standalone RAW cd, with datafiles (renamed to 0.BIN)
+raw_par.bin -> This is the version you can use to load the game through your Action Replay/PAR cart. 
+               You'll still need a cd with the original datafiles in it though.
 
-Please be aware that, currently, this implementation may contains bugs and 
-non-implemented features that make it impossible to finish the game.
+Sound driver needed at the root of the game disk is included.
 
-Supported Versions:
--------------------
+GAME CONTROLS:
+Digital cross -> directional movements
+A -> Run/Kick/Fire
+Z -> Enter a level code
+Start -> Pause game
 
-Currently, only the english PC DOS version is supported ("Out of this World").
+HOW TO PREPARE A GAME DISK:
+To play with RAW, you need to own the original game to extract the datafiles.
+You'll need the following files from the original game in the root of the disk:
 
-Compiling:
-----------
+md5 hashes from my copy:
+33f339a210fc50789ed8e364a9deac1c  bank01
+55b91b0203cd29da76f3768818c90a72  bank02
+c395f4eda58e9e8e848c0afbd0f1a4e9  bank03
+2f8433752fea85450111c2ab0017f569  bank04
+6a5a5615ae16e20bc919901926c02a62  bank05
+3c0f4b081e1a0053279ce9fd6b0c5022  bank06
+92cdd958dca0d79eaf2f66f0aea7f488  bank07
+7983bdaa30d31ddb89d28f0d75a40af8  bank08
+f46299426b01f02969c3c177d30587da  bank09
+511df1c6034885471fe92c4490e21b59  bank0a
+1513703bc332464d93305739694249cd  bank0b
+02877f4a22df61868ce3ffb2cbbbcf0c  bank0c
+63d0298fd161f488856907d329f46b0f  bank0d
+ee9e67fcaace0300fec4e619299e6e0e  memlist.bin
 
-Tweak the Makefile if needed and type make (only gcc3 has been tested so far).
-The SDL and zlib libraries are required.
+After having copied everything you need into cd_root directory (renamed binary too),
+you'll have to generate the iso file. On linux you can use mkisofs this way:
+mkisofs -quiet -sysid "SEGA SATURN" -volid "SaturnApp" -volset "SaturnApp" \
+-publisher "SEGA ENTERPRISES, LTD." -preparer "SEGA ENTERPRISES, LTD." -appid "SaturnApp" \
+ -abstract "ABS.TXT" -copyright "CPY.TXT" -biblio "BIB.TXT" -generic-boot ip.bin -full-iso9660-filenames -o raw.iso ./
 
-Running:
---------
+WHAT NEEDS TO BE DONE:
+* As far as i've seen, the game works OK, i could use a millisec precision timer for better
+  music syncronization, but the SBL pcm library forbids me to reinitialize the FRT.
+* Saving/Loading from backup memory is not implemented (nor really needed, you can use
+  game access codes to go to the desired level).
+* Game works fine at 50hz on pal consoles, but i still consider it a much better experience
+  when played at 60hz.
 
-You will need the original files, here is the required list :
-    BANK*
-    MEMLIST.BIN
-	
-To start the game, you can either :
-- put the game's datafiles in the same directory as the executable
-- use the --datapath command line option to specify the datafiles directory
+All my code is to be considered under GPLv3 license.
 
-Here are the various in game hotkeys :
-    Arrow Keys      allow you to move Lester
-    Enter/Space     allow you run/shoot with your gun
-    C               allow to enter a code to jump at a specific level
-    P               pause the game
-    Alt X           exit the game
-    Ctrl S          save game state
-    Ctrl L          load game state
-    Ctrl + and -    change game state slot
-    Ctrl F          toggle fast mode
-    Alt Enter       toggle windowed/fullscreen mode
-    Alt + and -     change scaler factor
+I WON'T PROVIDE GAME DATAFILES IN THIS ARCHIVE BECAUSE UNAUTHORIZED REDISTRIBUTION WOULD BE ILLEGAL!!!
 
-Credits:
---------
+THANKS: in no particular order...
+Thanks to segaxtreme.net community for help with my Saturn issues, 
+Thanks to the original author of RAW,
+Thanks to RockinB for the code i've "borrowed" from libRB,
+Thanks to joostp for giving me the idea of Saturn developing (and pointing me to RAW),
+Thanks to vbt for his memory advices,
+Thanks to SEGA for the wonderful console.
 
-Eric Chahi, obviously, for making this great game.
+Enjoy this release :-)
+hkzlab (hkzlabnet@gmail.com)
 
-Contact:
---------
-
-Gregory Montoir, cyx@users.sourceforge.net

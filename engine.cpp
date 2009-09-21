@@ -21,6 +21,10 @@
 #include "serializer.h"
 #include "systemstub.h"
 
+#include <sgl.h>
+#include <sl_def.h>
+
+#include "saturn_print.h"
 
 Engine::Engine(SystemStub *stub, const char *dataDir, const char *saveDir)
 	: _stub(stub), _log(&_mix, &_res, &_ply, &_vid, _stub), _mix(_stub), _res(&_vid, dataDir), 
@@ -29,8 +33,11 @@ Engine::Engine(SystemStub *stub, const char *dataDir, const char *saveDir)
 
 void Engine::run() {
 	_stub->init("Out Of This World");
+
 	setup();
+
 	_log.restartAt(0x3E80); // demo starts at 0x3E81
+	
 	while (!_stub->_pi.quit) {
 		_log.setupScripts();
 		_log.inp_updatePlayer();
@@ -86,7 +93,7 @@ void Engine::makeGameStateName(uint8 slot, char *buf) {
 void Engine::saveGameState(uint8 slot, const char *desc) {
 	char stateFile[20];
 	makeGameStateName(slot, stateFile);
-	File f(true);
+	File f(false);
 	if (!f.open(stateFile, _saveDir, "wb")) {
 		warning("Unable to save state file '%s'", stateFile);
 	} else {
@@ -115,7 +122,7 @@ void Engine::saveGameState(uint8 slot, const char *desc) {
 void Engine::loadGameState(uint8 slot) {
 	char stateFile[20];
 	makeGameStateName(slot, stateFile);
-	File f(true);
+	File f(false);
 	if (!f.open(stateFile, _saveDir, "rb")) {
 		warning("Unable to open state file '%s'", stateFile);
 	} else {

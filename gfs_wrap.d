@@ -1,0 +1,25 @@
+gfs_wrap.o: gfs_wrap.c /home/nightshade/SATURN/SH-COFF/sgl/inc/sgl.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/machine.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sl_def.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sl_def.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sega_cdc.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sega_xpt.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sega_gfs.h \
+  /home/nightshade/SATURN/SH-COFF/sgl/inc/sega_cdc.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/string.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/_ansi.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/newlib.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/config.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/machine/ieeefp.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/reent.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/_ansi.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/_types.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/lock.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/stdlib.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/machine/stdlib.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/alloca.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/ctype.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/stdio.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/types.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/machine/types.h \
+  /home/nightshade/SATURN/SH-COFF/tooldir/include/sys/stdio.h gfs_wrap.h

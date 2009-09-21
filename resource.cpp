@@ -22,6 +22,9 @@
 #include "serializer.h"
 #include "video.h"
 
+#include <sega_mem.h>
+
+#include "saturn_print.h"
 
 Resource::Resource(Video *vid, const char *dataDir) 
 	: _vid(vid), _dataDir(dataDir) {
@@ -33,7 +36,7 @@ void Resource::readBank(const MemEntry *me, uint8 *dstBuf) {
 #ifdef USE_UNPACKED_DATA
 	char bankEntryName[64];
 	sprintf(bankEntryName, "ootw-%02X-%d.dump", n, me->type);
-	File f;
+	File f(false);
 	if (!f.open(bankEntryName, _dataDir)) {
 		error("Resource::readBank() unable to open '%s' file\n", bankEntryName);
 	}
@@ -47,7 +50,7 @@ void Resource::readBank(const MemEntry *me, uint8 *dstBuf) {
 }
 
 void Resource::readEntries() {	
-	File f;
+	File f(false);
 	if (!f.open("memlist.bin", _dataDir)) {
 		error("Resource::readEntries() unable to open 'memlist.bin' file\n");
 	}
@@ -191,14 +194,18 @@ void Resource::setupPtrs(uint16 ptrId) {
 }
 
 void Resource::allocMemBlock() {
-	_memPtrStart = (uint8 *)malloc(MEM_BLOCK_SIZE);
+	//fprintf_saturn(stdout, "Resource::allocMemBlock()");
+	_memPtrStart = (uint8 *)MEM_Malloc(MEM_BLOCK_SIZE);
+	//_memPtrStart = (uint8*)(0x22400000);
 	_scriptBakPtr = _scriptCurPtr = _memPtrStart;
 	_vidBakPtr = _vidCurPtr = _memPtrStart + MEM_BLOCK_SIZE - 0x800 * 16;
 	_useSegVideo2 = false;
 }
 
 void Resource::freeMemBlock() {
-	free(_memPtrStart);
+	//fprintf_saturn(stdout, "Resource::freeMemBlock()");
+	MEM_Free(_memPtrStart);
+	;
 }
 
 void Resource::saveOrLoad(Serializer &ser) {

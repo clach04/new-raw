@@ -20,6 +20,7 @@
 #include "serializer.h"
 #include "systemstub.h"
 
+#include "saturn_print.h"
 
 static int8 addclamp(int a, int b) {
 	int add = a + b;
@@ -83,7 +84,8 @@ void Mixer::stopAll() {
 }
 
 void Mixer::mix(int8 *buf, int len) {
-	MutexStack(_stub, _mutex);
+	//fprintf_saturn(stdout, "Mixer::mix()");
+	//MutexStack(_stub, _mutex);
 	memset(buf, 0, len);
 	for (uint8 i = 0; i < NUM_CHANNELS; ++i) {
 		MixerChannel *ch = &_channels[i];

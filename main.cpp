@@ -20,44 +20,18 @@
 #include "systemstub.h"
 #include "util.h"
 
+#include <sgl.h>
+#include <sl_def.h>
 
-static const char *USAGE = 
-	"Raw - Another World Interpreter\n"
-	"Usage: raw [OPTIONS]...\n"
-	"  --datapath=PATH   Path to where the game is installed (default '.')\n"
-	"  --savepath=PATH   Path to where the save files are stored (default '.')\n";
-
-static bool parseOption(const char *arg, const char *longCmd, const char **opt) {
-	bool ret = false;
-	if (arg[0] == '-' && arg[1] == '-') {
-		if (strncmp(arg + 2, longCmd, strlen(longCmd)) == 0) {
-			*opt = arg + 2 + strlen(longCmd);
-			ret = true;
-		}
-	}
-	return ret;
-}
-
-#undef main
-int main(int argc, char *argv[]) {
+void ss_main(void) {
 	const char *dataPath = ".";
 	const char *savePath = ".";
-	for (int i = 1; i < argc; ++i) {
-		bool opt = false;
-		if (strlen(argv[i]) >= 2) {
-			opt |= parseOption(argv[i], "datapath=", &dataPath);
-			opt |= parseOption(argv[i], "savepath=", &savePath);
-		}
-		if (!opt) {
-			printf(USAGE);
-			return 0;
-		}
-	}
+	
 	g_debugMask = DBG_INFO; // DBG_LOGIC | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND
 	SystemStub *stub = SystemStub_SDL_create();
 	Engine *e = new Engine(stub, dataPath, savePath);
 	e->run();
 	delete e;
 	delete stub;
-	return 0;
+	return;
 }

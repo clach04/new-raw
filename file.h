@@ -20,13 +20,24 @@
 #define __FILE_H__
 
 #include "intern.h"
+#include <sega_mem.h>
 
 struct File_impl;
 
 struct File {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	File_impl *_impl;
 
-	File(bool gzipped = false);
+	File(bool useless);
 	~File();
 
 	bool open(const char *filename, const char *directory, const char *mode="rb");

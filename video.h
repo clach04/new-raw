@@ -21,6 +21,8 @@
 
 #include "intern.h"
 
+#include <sega_mem.h>
+
 struct StrEntry {
 	uint16 id;
 	const char *str;
@@ -43,6 +45,14 @@ struct Serializer;
 struct SystemStub;
 
 struct Video {
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+
 	typedef void (Video::*drawLine)(int16 x1, int16 x2, uint8 col);
 
 	enum {

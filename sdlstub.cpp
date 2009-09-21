@@ -16,34 +16,130 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#include <SDL.h>
+
+#include <sgl.h>
+#include <sl_def.h>
+#include <sega_mem.h>
+#include <sega_int.h>
+#include <sega_pcm.h>
+#include <sega_snd.h>
+
 #include "systemstub.h"
 #include "util.h"
+#include "gfs_wrap.h"
+#include "saturn_print.h"
+#include "mixer.h"
 
+#define CRAM_BANK 0x5f00000 // Beginning of color ram memory addresses
+#define BACK_COL_ADR (VDP2_VRAM_A1 + 0x1fffe) // Address for background colour
+#define LOW_WORK_RAM 0x00200000 // Beginning of LOW WORK RAM (1Mb)
+#define LOW_WORK_RAM_SIZE 0x100000
+
+#define MAX_INPUT_DEVICES 12
+
+#define PAD_PUSH_UP    (!(push & PER_DGT_KU))
+#define PAD_PUSH_DOWN  (!(push & PER_DGT_KD))
+#define PAD_PUSH_LEFT  (!(push & PER_DGT_KL))
+#define PAD_PUSH_RIGHT (!(push & PER_DGT_KR))
+#define PAD_PUSH_A  (!(push & PER_DGT_TA))
+#define PAD_PUSH_B  (!(push & PER_DGT_TB))
+#define PAD_PUSH_C  (!(push & PER_DGT_TC))
+#define PAD_PUSH_Z  (!(push & PER_DGT_TZ))
+#define PAD_PUSH_START (!(push & PER_DGT_ST))
+
+#define PAD_PULL_UP    (!(pull & PER_DGT_KU))
+#define PAD_PULL_DOWN  (!(pull & PER_DGT_KD))
+#define PAD_PULL_LEFT  (!(pull & PER_DGT_KL))
+#define PAD_PULL_RIGHT (!(pull & PER_DGT_KR))
+#define PAD_PULL_A  (!(pull & PER_DGT_TA))
+#define PAD_PULL_B  (!(pull & PER_DGT_TB))
+#define PAD_PULL_C  (!(pull & PER_DGT_TC))
+#define PAD_PULL_Z  (!(pull & PER_DGT_TZ))
+#define PAD_PULL_START (!(pull & PER_DGT_ST))
+
+#define SYS_CDINIT1(i) ((**(void(**)(int))0x60002dc)(i)) // Init functions for Saturn CD drive
+#define SYS_CDINIT2() ((**(void(**)(void))0x600029c)())
+
+#define PCM_ADDR ((void*)0x25a20000)
+#define PCM_SIZE (4096L*8)
+
+#define SND_BUFFER_SIZE 512 
+#define SND_BUF_SLOTS 10 
+
+#define MAX_TIMERS 5
+
+extern "C" {
+	extern void DMA_ScuInit(void);
+}
+
+static PcmHn createHandle(int bufno);
+static void play_manage_buffers(void);
+static void fill_buffer_slot(void);
+void fill_play_audio(void);
+void sat_restart_audio(void);
+void vblIn(void); // This is run at each vblnk-in
+
+typedef struct {
+	volatile Uint8 access;
+} SatMutex;
+
+static Uint8 snd_bufs[2][SND_BUFFER_SIZE * SND_BUF_SLOTS];
+static Uint8 buffer_filled[2];
+static Uint8 ring_bufs[2][SND_BUFFER_SIZE * SND_BUF_SLOTS];
+
+static PcmWork pcm_work[2];
+static PcmHn pcm[2];
+
+Uint8 curBuf = 0;
+Uint8 curSlot = 0;
+
+static SystemStub *sys = NULL;
+static volatile Uint32 ticker = 0;
+static volatile	Uint8  tick_wrap = 0;
+
+/* AUDIO */
+static Mixer *mix = NULL;
+static volatile Uint8 audioEnabled = 0;
+
+/* *** */
 
 struct SDLStub : SystemStub {
 	typedef void (SDLStub::*ScaleProc)(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
 
+	typedef struct {
+		uint8	enabled;
+		
+		uint8	id;
+		uint32	delay; 
+
+		uint32	waitTick;
+		uint32	waitWrap;
+
+		TimerCallback callback;
+		void *param;
+	} TimerChain;
+
+	typedef struct {
+		Uint8 enabled;
+
+		AudioCallback callback;
+		void *param;
+	} AudioData;
+
 	enum {
 		SCREEN_W = 320,
 		SCREEN_H = 200,
-		SOUND_SAMPLE_RATE = 22050
+		SOUND_SAMPLE_RATE = 22050 
 	};
 
-	struct Scaler {
-		const char *name;
-		ScaleProc proc;
-		uint8 factor;
-	};
-	
-	static const Scaler _scalers[];
-
-	uint8 *_offscreen;
-	SDL_Surface *_screen;
-	SDL_Surface *_sclscreen;
-	bool _fullscreen;
-	uint8 _scaler;
 	uint16 _pal[16];
+
+	/* Controller data */
+	PerDigital *input_devices[MAX_INPUT_DEVICES];
+	Uint8 connected_devices;
+
+	/* Timers */
+	TimerChain timerNode[MAX_TIMERS]; // We won't use more than this number of timers
 
 	virtual ~SDLStub() {}
 	virtual void init(const char *title);
@@ -62,50 +158,66 @@ struct SDLStub : SystemStub {
 	virtual void destroyMutex(void *mutex);
 	virtual void lockMutex(void *mutex);
 	virtual void unlockMutex(void *mutex);
+	virtual	void checkTimers(void);
+	virtual void fadePal(void);
+	virtual void restorePal(void);
 
 	void prepareGfxMode();
 	void cleanupGfxMode();
 	void switchGfxMode(bool fullscreen, uint8 scaler);
 
 	void point1x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void point2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void point3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void scale2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void scale3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	
-};
 
-const SDLStub::Scaler SDLStub::_scalers[] = {
-	{ "Point1x", &SDLStub::point1x, 1 },
-	{ "Point2x", &SDLStub::point2x, 2 },
-	{ "Scale2x", &SDLStub::scale2x, 2 },
-	{ "Point3x", &SDLStub::point3x, 3 },
-	{ "Scale3x", &SDLStub::scale3x, 3 }
+	void initTimers(void);
+	int  cdUnlock(void); // CD Drive unlocker, when loading game through PAR
+	void setup_input (void); // Setup input controllers
+	void load_audio_driver(void);
 };
-
 
 SystemStub *SystemStub_SDL_create() {
-	return new SDLStub();
+	MEM_Init(LOW_WORK_RAM, LOW_WORK_RAM_SIZE); // Use low work ram for the sega mem library
+	sys = new SDLStub();
+	return sys;
 }
 
 void SDLStub::init(const char *title) {
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
-	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
-	SDL_ShowCursor(SDL_DISABLE);
-	SDL_WM_SetCaption(title, NULL);
-	memset(&_pi, 0, sizeof(_pi));
-	_offscreen = (uint8 *)malloc(SCREEN_W * SCREEN_H * 2);
-	if (!_offscreen) {
-		error("Unable to allocate offscreen buffer");
-	}
-	_fullscreen = false;
-	_scaler = 1;
-	prepareGfxMode();
+	//CartRAM_init(0);
+
+#ifdef _PAR_UPLOAD_
+	cdUnlock(); // Needed only when loading from PAR: Unlock the CD drive
+#endif
+
+	DMA_ScuInit(); // Init for SCU DMA
+
+	init_GFS(); // Initialize GFS system
+
+	slInitSystem(TV_320x224, NULL, 1); // Init SGL
+
+	memset(&_pi, 0, sizeof(_pi)); // Clean inout
+
+	load_audio_driver(); // Load M68K audio driver
+
+	prepareGfxMode(); // Prepare graphic output
+
+	setup_input(); // Setup controller inputs
+
+	audioEnabled = 0;
+	curBuf = 0;
+	curSlot = 0;
+
+	buffer_filled[0] = 0;
+	buffer_filled[1] = 0;
+
+	initTimers(); // Initialize timers for callbacks
+
+	slIntFunction(vblIn); // Function to call at each vblank-in
+
+	return;
 }
 
 void SDLStub::destroy() {
 	cleanupGfxMode();
-	SDL_Quit();
+	SYS_Exit(0);
 }
 
 void SDLStub::setPalette(uint8 s, uint8 n, const uint8 *buf) {
@@ -116,152 +228,134 @@ void SDLStub::setPalette(uint8 s, uint8 n, const uint8 *buf) {
 			uint8 col = buf[i * 3 + j];
 			c[j] =  (col << 2) | (col & 3);
 		}
-		_pal[i] = SDL_MapRGB(_screen->format, c[0], c[1], c[2]);
+		_pal[i] = ((c[2] >> 3) << 10) | ((c[1] >> 3) << 5) | (c[0] >> 3) | RGB_Flag; // BGR for saturn
 	}	
+
+	// Now copy the palette to CRAM.
+	memcpy((uint8*)(CRAM_BANK + 512), (uint8*)_pal, 16 * sizeof(uint16));
+
+	return;
 }
 
 void SDLStub::copyRect(uint16 x, uint16 y, uint16 w, uint16 h, const uint8 *buf, uint32 pitch) {
-	buf += y * pitch + x;
-	uint16 *p = (uint16 *)_offscreen;
-	while (h--) {
-		for (int i = 0; i < w / 2; ++i) {
-			uint8 p1 = *(buf + i) >> 4;
-			uint8 p2 = *(buf + i) & 0xF;
-			*(p + i * 2 + 0) = _pal[p1];
-			*(p + i * 2 + 1) = _pal[p2];
-		}
-		p += SCREEN_W;
-		buf += pitch;
+	buf += y * pitch + x; // Get to data...
+
+	int idx;
+
+	for (idx = 0; idx < h; idx++) {
+		//memcpy((uint8*)(VDP2_VRAM_A0 + ((idx + y) * 256) + x), (uint8*)(buf + (idx * pitch)), w/2);
+		DMA_ScuMemCopy((uint8*)(VDP2_VRAM_A0 + ((idx + y) * 256) + x), (uint8*)(buf + (idx * pitch)), w/2);
+		SCU_DMAWait();
 	}
-	SDL_LockSurface(_sclscreen);
-	(this->*_scalers[_scaler].proc)((uint16 *)_sclscreen->pixels, _sclscreen->pitch, (uint16 *)_offscreen, SCREEN_W, SCREEN_W, SCREEN_H);
-	SDL_UnlockSurface(_sclscreen);
-	SDL_BlitSurface(_sclscreen, NULL, _screen, NULL);
-	SDL_UpdateRect(_screen, 0, 0, 0, 0);
+	
+	return;
 }
 
 void SDLStub::processEvents() {
-	SDL_Event ev;
-	while(SDL_PollEvent(&ev)) {
-		switch (ev.type) {
-		case SDL_QUIT:
-			_pi.quit = true;
-			break;
-		case SDL_KEYUP:
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				_pi.dirMask &= ~PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
+	Uint16 push;
+	Uint16 pull;
+
+	switch(input_devices[0]->id) { // Check only the first controller...
+		case PER_ID_StnAnalog: // ANALOG PAD
+		case PER_ID_StnPad: // DIGITAL PAD 
+			_pi.lastChar = 0;
+
+			push = (volatile Uint16)(input_devices[0]->push);
+			pull = (volatile Uint16)(input_devices[0]->pull);
+
+			if (PAD_PULL_UP)
 				_pi.dirMask &= ~PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
-				_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
-				_pi.button = false;
-				break;
-			default:
-				break;
-			}
-			break;
-		case SDL_KEYDOWN:
-			if (ev.key.keysym.mod & KMOD_ALT) {
-				if (ev.key.keysym.sym == SDLK_RETURN) {
-					switchGfxMode(!_fullscreen, _scaler);
-				} else if (ev.key.keysym.sym == SDLK_KP_PLUS) {
-					uint8 s = _scaler + 1;
-					if (s < ARRAYSIZE(_scalers)) {
-						switchGfxMode(_fullscreen, s);
-					}
-				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
-					int8 s = _scaler - 1;
-					if (_scaler > 0) {
-						switchGfxMode(_fullscreen, s);
-					}
-				} else if (ev.key.keysym.sym == SDLK_x) {
-					_pi.quit = true;
-				}
-				break;
-			} else if (ev.key.keysym.mod & KMOD_CTRL) {
-				if (ev.key.keysym.sym == SDLK_s) {
-					_pi.save = true;
-				} else if (ev.key.keysym.sym == SDLK_l) {
-					_pi.load = true;
-				} else if (ev.key.keysym.sym == SDLK_f) {
-					_pi.fastMode = true;
-				} else if (ev.key.keysym.sym == SDLK_KP_PLUS) {
-					_pi.stateSlot = 1;
-				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
-					_pi.stateSlot = -1;
-				}
-				break;
-			}
-			_pi.lastChar = ev.key.keysym.sym;
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				_pi.dirMask |= PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				_pi.dirMask |= PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
+			else if (PAD_PUSH_UP)
 				_pi.dirMask |= PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
+
+			if (PAD_PULL_DOWN)
+				_pi.dirMask &= ~PlayerInput::DIR_DOWN;
+			else if (PAD_PUSH_DOWN)
 				_pi.dirMask |= PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
+
+			if (PAD_PULL_LEFT)
+				_pi.dirMask &= ~PlayerInput::DIR_LEFT;
+			else if (PAD_PUSH_LEFT)
+				_pi.dirMask |= PlayerInput::DIR_LEFT;
+
+			if (PAD_PULL_RIGHT)
+				_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
+			else if (PAD_PUSH_RIGHT)
+				_pi.dirMask |= PlayerInput::DIR_RIGHT;
+
+			if (PAD_PULL_A)
+				_pi.button = false;
+			else if (PAD_PUSH_A)
 				_pi.button = true;
-				break;
-			case SDLK_c:
-				_pi.code = true;
-				break;
-			case SDLK_p:
+
+			if (PAD_PUSH_START)
 				_pi.pause = true;
-				break;
-			default:
-				break;
-			}
+
+			if (PAD_PUSH_Z)
+				_pi.code = true;
+
 			break;
 		default:
 			break;
-		}
 	}
+
+	return;
 }
 
 void SDLStub::sleep(uint32 duration) {
-	SDL_Delay(duration);
+	//fprintf_saturn(stdout, "SDLStub::sleep(%u)", duration);
+	// TODO: Use a proper timer...
+	uint32 wait_tick = ticker + duration;
+
+	while(wait_tick >= ticker);
+
+	return;
 }
 
 uint32 SDLStub::getTimeStamp() {
-	return SDL_GetTicks();	
+	//fprintf_saturn(stdout, "SDLStub::getTimeStamp()");
+	return ticker;
 }
 
 void SDLStub::startAudio(AudioCallback callback, void *param) {
-	SDL_AudioSpec desired;
-	memset(&desired, 0, sizeof(desired));
+	//fprintf_saturn(stdout, "SDLStub::startAudio()");
 
-	desired.freq = SOUND_SAMPLE_RATE;
-	desired.format = AUDIO_S8;
-	desired.channels = 1;
-	desired.samples = 2048;
-	desired.callback = callback;
-	desired.userdata = param;
-	if (SDL_OpenAudio(&desired, NULL) == 0) {
-		SDL_PauseAudio(0);
-	} else {
-		error("SDLStub::startAudio() unable to open sound device");
-	}
+	mix = (Mixer*)param;
+
+	memset(snd_bufs, 0, SND_BUFFER_SIZE * 2 * SND_BUF_SLOTS);
+	memset(ring_bufs, 0, SND_BUFFER_SIZE * 2 * SND_BUF_SLOTS);
+
+	PCM_Init(); // Initialize PCM playback
+
+	audioEnabled = 1; // Enable audio
+
+	// Prepare handles
+	pcm[0] = createHandle(0);
+	pcm[1] = createHandle(1);
+
+	// start playing
+	PCM_Start(pcm[0]); 
+	PCM_EntryNext(pcm[1]);
+
+	return;
 }
 
 void SDLStub::stopAudio() {
-	SDL_CloseAudio();
+	fprintf_saturn(stdout, "SDLStub::stopAudio()");
+	
+	audioEnabled = 0;
+
+	// Stopping playback
+	PCM_Stop(pcm[0]);
+	PCM_Stop(pcm[1]);
+
+	// Destroy handles
+	PCM_DestroyMemHandle(pcm[0]);
+	PCM_DestroyMemHandle(pcm[1]);
+
+	// Deinitialize PCM playback
+	PCM_Finish();
+	return;
 }
 
 uint32 SDLStub::getOutputSampleRate() {
@@ -269,181 +363,399 @@ uint32 SDLStub::getOutputSampleRate() {
 }
 
 void *SDLStub::addTimer(uint32 delay, TimerCallback callback, void *param) {
-	return SDL_AddTimer(delay, (SDL_NewTimerCallback)callback, param);
+	//fprintf_saturn(stdout, "SDLStub::addTimer(%u)", delay);
+	int idx;
+
+	for(idx = 0; idx < MAX_TIMERS; idx++) {
+		if(timerNode[idx].enabled == 0) {
+			timerNode[idx].callback = callback;
+			timerNode[idx].delay = delay + delay/4;
+			timerNode[idx].waitTick = ticker + timerNode[idx].delay;
+
+			if(timerNode[idx].waitTick < ticker) // wrap!
+				timerNode[idx].waitWrap = (tick_wrap + 1)%2;
+			else
+				timerNode[idx].waitWrap = tick_wrap;
+
+			timerNode[idx].enabled = 1;
+
+			return &(timerNode[idx].id);
+		}
+	}
+
+	return NULL;
 }
 
 void SDLStub::removeTimer(void *timerId) {
-	SDL_RemoveTimer((SDL_TimerID)timerId);
+	//fprintf_saturn(stdout, "SDLStub::removeTimer()");
+	int idx;
+
+	for(idx = 0; idx < MAX_TIMERS; idx++) {
+		if( *(uint8*)timerId == timerNode[idx].id) {
+			timerNode[idx].enabled = 0;
+		}
+	}
+
+	return;
 }
 
 void *SDLStub::createMutex() {
-	return SDL_CreateMutex();
+	//fprintf_saturn(stdout, "SDLStub::createMutex()");
+	SatMutex *mtx = (SatMutex*)MEM_Malloc(sizeof(SatMutex));
+	mtx->access = 0;
+
+	return mtx;
 }
 
 void SDLStub::destroyMutex(void *mutex) {
-	SDL_DestroyMutex((SDL_mutex *)mutex);
+	//fprintf_saturn(stdout, "SDLStub::destroyMutex()");
+	MEM_Free(mutex);
+
+	return;
 }
 
 void SDLStub::lockMutex(void *mutex) {
-	SDL_mutexP((SDL_mutex *)mutex);
+	//fprintf_saturn(stdout, "SDLStub::lockMutex()");
+	while(((SatMutex*)mutex)->access > 0) fprintf_saturn(stdout, "Waiting in lockMutex()!");
+	((SatMutex*)mutex)->access++;
+
+	return;
 }
 
 void SDLStub::unlockMutex(void *mutex) {
-	SDL_mutexV((SDL_mutex *)mutex);
+	//fprintf_saturn(stdout, "SDLStub::unlockMutex()");
+	((SatMutex*)mutex)->access--;
+	
+	return;
 }
 
 void SDLStub::prepareGfxMode() {
-	int w = SCREEN_W * _scalers[_scaler].factor;
-	int h = SCREEN_H * _scalers[_scaler].factor;
-	_screen = SDL_SetVideoMode(w, h, 16, _fullscreen ? (SDL_FULLSCREEN | SDL_HWSURFACE) : SDL_HWSURFACE);
-	if (!_screen) {
-		error("SDLStub::prepareGfxMode() unable to allocate _screen buffer");
-	}
-	_sclscreen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 16,
-						_screen->format->Rmask,
-						_screen->format->Gmask,
-						_screen->format->Bmask,
-						_screen->format->Amask);
-	if (!_sclscreen) {
-		error("SDLStub::prepareGfxMode() unable to allocate _sclscreen buffer");
-	}
+	slTVOff(); // Turn off display for initialization
+
+	slColRAMMode(CRM16_1024); // Color mode: 1024 colors, choosed between 16 bit
+
+	slBitMapNbg1(COL_TYPE_16, BM_512x256, (void*)VDP2_VRAM_A0); // Set this scroll plane in bitmap mode
+	memset((void*)VDP2_VRAM_A0, 0x00, 512*256); // Clean the VRAM banks.
+
+	slPriorityNbg1(1); // Game screen
+
+	//slScrAutoDisp(NBG1ON | NBG0ON); // Enable display for NBG1 (game screen), NBG0 (debug messages/keypad)
+	slScrAutoDisp(NBG1ON); // Enable display only for game screen: NBG1
+
+	//slScrPosNbg0((FIXED)0, (FIXED)0); // Position NBG0
+	//slScrPosNbg1((FIXED)0, toFIXED(-10.0)); // Position NBG1, offset it a bit to center the image on a TV set
+	//slLookR(toFIXED(0.0) , toFIXED(0.0));
+
+	slBMPaletteNbg1(1); // NBG1 (game screen) uses palette 1 in CRAM
+
+	slScrTransparent (NBG1ON); // Do NOT elaborate transparency on NBG1 scroll
+
+	slBack1ColSet((void *)BACK_COL_ADR, 0x0); // Black color background
+
+	slTVOn(); // Initialization completed... tv back on
+
+	return;
 }
 
 void SDLStub::cleanupGfxMode() {
-	if (_offscreen) {
-		free(_offscreen);
-		_offscreen = 0;
-	}
-	if (_sclscreen) {
-		SDL_FreeSurface(_sclscreen);
-		_sclscreen = 0;
-	}
-	if (_screen) {
-		SDL_FreeSurface(_screen);
-		_screen = 0;
-	}
+	//fprintf_saturn(stdout, "SDLStub::cleanupGfxMode()");
+	slTVOff();
+	return;
 }
 
 void SDLStub::switchGfxMode(bool fullscreen, uint8 scaler) {
-	SDL_Surface *prev_sclscreen = _sclscreen;
-	SDL_FreeSurface(_screen); 	
-	_fullscreen = fullscreen;
-	_scaler = scaler;
-	prepareGfxMode();
-	SDL_BlitSurface(prev_sclscreen, NULL, _sclscreen, NULL);
-	SDL_FreeSurface(prev_sclscreen);
+	//fprintf_saturn(stdout, "SDLStub::switchGfxMode()");
+	return;
 }
 
-void SDLStub::point1x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		memcpy(dst, src, w * 2);
-		dst += dstPitch;
-		src += dstPitch;
+
+int SDLStub::cdUnlock (void) {
+     Sint32 ret;
+     CdcStat stat;
+     volatile unsigned int delay;
+
+     SYS_CDINIT1(3);
+     SYS_CDINIT2();
+
+     do {
+          for(delay = 1000000; delay; delay--);
+          ret = CDC_GetCurStat(&stat);
+     } while ((ret != 0) || (CDC_STAT_STATUS(&stat) == 0xff));
+
+     return (int) CDC_STAT_STATUS(&stat);
+}
+
+// Store the info on connected peripheals inside an array
+void SDLStub::setup_input (void) {
+	if ((Per_Connect1 + Per_Connect2) == 0) {
+		connected_devices = 0;
+		return; // Nothing connected...
 	}
-}
+	
+	Uint8 index, input_index = 0;
 
-void SDLStub::point2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 2) {
-			uint16 c = *(src + i);
-			*(p + 0) = c;
-			*(p + 1) = c;
-			*(p + 0 + dstPitch) = c;
-			*(p + 1 + dstPitch) = c;
+	// check up to 6 peripheals on left connector
+	for(index = 0; (index < Per_Connect1) && (input_index < MAX_INPUT_DEVICES); index++)
+		if(Smpc_Peripheral[index].id != PER_ID_NotConnect) {
+			input_devices[input_index] = &(Smpc_Peripheral[index]);
+			input_index++;
 		}
-		dst += dstPitch * 2;
-		src += srcPitch;
+
+	// check up to 6 peripheals on right connector 
+	for(index = 0; (index < Per_Connect2) && (input_index < MAX_INPUT_DEVICES); index++)
+		if(Smpc_Peripheral[index + 15].id != PER_ID_NotConnect) {
+			input_devices[input_index] = &(Smpc_Peripheral[index + 15]);
+			input_index++;
+		}
+
+	connected_devices = input_index;
+}
+
+void SDLStub::load_audio_driver(void) {
+	SndIniDt snd_init;
+	char sound_map[] = {0xff , 0xff};
+	
+	GFS_FILE *drv_file = NULL;
+	uint32 drv_size = 0;
+	uint8 *sddrvstsk = NULL;
+
+	drv_file = sat_fopen("sddrvs.tsk");
+
+	if(drv_file == NULL) {
+		SYS_Exit(0);
+	}
+
+	sat_fseek(drv_file, 0, SEEK_END);
+	drv_size = sat_ftell(drv_file);
+	sat_fseek(drv_file, 0, SEEK_SET);
+
+	sddrvstsk = (uint8*)MEM_Malloc(drv_size);
+
+	sat_fread(sddrvstsk, drv_size, 1, drv_file);
+	sat_fclose(drv_file);
+
+	SND_INI_PRG_ADR(snd_init) 	= (uint16 *)sddrvstsk;
+	SND_INI_PRG_SZ(snd_init) 	= drv_size;
+	SND_INI_ARA_ADR(snd_init) 	= (uint16 *)sound_map;
+	SND_INI_ARA_SZ(snd_init) 	= sizeof(sound_map);
+	SND_Init(&snd_init);
+	SND_ChgMap(0);
+
+	MEM_Free(sddrvstsk);
+
+	return;
+}
+
+void SDLStub::initTimers(void) {
+	uint8 idx;
+
+	for(idx = 0; idx < MAX_TIMERS; idx++) {
+		timerNode[idx].id = idx;
+		timerNode[idx].enabled = 0;
 	}
 }
 
-void SDLStub::point3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 3) {
-			uint16 c = *(src + i);
-			*(p + 0) = c;
-			*(p + 1) = c;
-			*(p + 2) = c;
-			*(p + 0 + dstPitch) = c;
-			*(p + 1 + dstPitch) = c;
-			*(p + 2 + dstPitch) = c;
-			*(p + 0 + dstPitch * 2) = c;
-			*(p + 1 + dstPitch * 2) = c;
-			*(p + 2 + dstPitch * 2) = c;
+void SDLStub::checkTimers(void) {
+	int idx;
+
+	for(idx = 0; idx < MAX_TIMERS; idx++) {
+		if((ticker >= timerNode[idx].waitTick) && (timerNode[idx].waitWrap == tick_wrap) && (timerNode[idx].enabled)) { // Timer rings!
+			timerNode[idx].waitTick = ticker + (timerNode[idx].delay); // reset timer
+
+			if(timerNode[idx].waitTick < ticker) // wrap!
+				timerNode[idx].waitWrap = (tick_wrap + 1)%2;
+			else
+				timerNode[idx].waitWrap = tick_wrap;
+
+			timerNode[idx].callback(timerNode[idx].delay, timerNode[idx].param); // and call back!
 		}
-		dst += dstPitch * 3;
-		src += srcPitch;
 	}
+
+	return;
 }
 
-void SDLStub::scale2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 2) {
-			uint16 B = *(src + i - srcPitch);
-			uint16 D = *(src + i - 1);
-			uint16 E = *(src + i);
-			uint16 F = *(src + i + 1);
-			uint16 H = *(src + i + srcPitch);
-			if (B != H && D != F) {
-				*(p) = D == B ? D : E;
-				*(p + 1) = B == F ? F : E;
-				*(p + dstPitch) = D == H ? D : E;
-				*(p + dstPitch + 1) = H == F ? F : E;
-			} else {
-				*(p) = E;
-				*(p + 1) = E;
-				*(p + dstPitch) = E;
-				*(p + dstPitch + 1) = E;
-			}
-		}
-		dst += dstPitch * 2;
-		src += srcPitch;
-	}
+void SDLStub::restorePal(void) {
+	memcpy((uint8*)(CRAM_BANK + 512), (uint8*)_pal, 16 * sizeof(uint16));
+	slSynch();
 }
 
-void SDLStub::scale3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 3) {
-			uint16 A = *(src + i - srcPitch - 1);
-			uint16 B = *(src + i - srcPitch);
-			uint16 C = *(src + i - srcPitch + 1);
-			uint16 D = *(src + i - 1);
-			uint16 E = *(src + i);
-			uint16 F = *(src + i + 1);
-			uint16 G = *(src + i + srcPitch - 1);
-			uint16 H = *(src + i + srcPitch);
-			uint16 I = *(src + i + srcPitch + 1);
-			if (B != H && D != F) {
-				*(p) = D == B ? D : E;
-				*(p + 1) = (D == B && E != C) || (B == F && E != A) ? B : E;
-				*(p + 2) = B == F ? F : E;
-				*(p + dstPitch) = (D == B && E != G) || (D == B && E != A) ? D : E;
-				*(p + dstPitch + 1) = E;
-				*(p + dstPitch + 2) = (B == F && E != I) || (H == F && E != C) ? F : E;
-				*(p + 2 * dstPitch) = D == H ? D : E;
-				*(p + 2 * dstPitch + 1) = (D == H && E != I) || (H == F && E != G) ? H : E;
-				*(p + 2 * dstPitch + 2) = H == F ? F : E;
-			} else {
-				*(p) = E;
-				*(p + 1) = E;
-				*(p + 2) = E;
-				*(p + dstPitch) = E;
-				*(p + dstPitch + 1) = E;
-				*(p + dstPitch + 2) = E;
-				*(p + 2 * dstPitch) = E;
-				*(p + 2 * dstPitch + 1) = E;
-				*(p + 2 * dstPitch + 2) = E;
-			}
-		}
-		dst += dstPitch * 3;
-		src += srcPitch;
+void SDLStub::fadePal(void) {
+	int idx, entry;
+
+	Uint16	_fadePal[16];
+
+	memcpy(_fadePal, _pal, 16 * sizeof(uint16));
+	for(entry = 0; entry < 16; entry++) {
+		Uint16 colour = _fadePal[entry];
+
+		Uint8 c0 = ((colour >> 0)  & 0x1F) >> 2;
+		Uint8 c1 = ((colour >> 5)  & 0x1F) >> 2;
+		Uint8 c2 = ((colour >> 10) & 0x1F) >> 2;
+		
+		_fadePal[entry] = (c2 << 10) | (c1 << 5) | c0 | RGB_Flag; 
 	}
+
+	memcpy((uint8*)(CRAM_BANK + 512), (uint8*)_fadePal, 16 * sizeof(uint16));
+	slSynch();
 }
+
+void vblIn (void) {
+
+	if(ticker > (0xFFFFFFFF - 19)) {
+		tick_wrap ^= 1;
+		ticker = 0;
+	} else {
+		ticker += 19;
+	}
+	
+	// Pcm elaboration...
+	PCM_VblIn();	
+
+	// Process events
+	sys->processEvents();
+
+	// PCM Tasks
+	PCM_Task(pcm[0]);
+	PCM_Task(pcm[1]);
+
+	// Fill and play the audio
+	if(audioEnabled)
+		fill_play_audio();
+
+	// Process timers
+	sys->checkTimers();
+}
+
+void fill_play_audio(void) {
+	fill_buffer_slot(); // Fill a buffer slot
+	play_manage_buffers(); // If ready, queue a buffer for playing
+}
+
+static PcmHn createHandle(int bufNo) {
+	PcmCreatePara	para;
+	PcmInfo 		info;
+	PcmStatus		*st;
+	PcmHn			pcm;
+
+	// Initialize the handle
+	PCM_PARA_WORK(&para) = (PcmWork *)(&pcm_work[bufNo]);
+	PCM_PARA_RING_ADDR(&para) = (Sint8 *)(ring_bufs[bufNo]);
+	PCM_PARA_RING_SIZE(&para) = SND_BUFFER_SIZE * SND_BUF_SLOTS;
+	PCM_PARA_PCM_ADDR(&para) = (Sint8*)PCM_ADDR;
+	PCM_PARA_PCM_SIZE(&para) = PCM_SIZE;
+
+	st = &pcm_work[bufNo].status;
+	st->need_ci = PCM_ON;
+	
+	// Prepare handle informations
+	PCM_INFO_FILE_TYPE(&info) = PCM_FILE_TYPE_NO_HEADER; // Headerless (RAW)
+	PCM_INFO_DATA_TYPE(&info) = PCM_DATA_TYPE_RLRLRL; // PCM data format
+	PCM_INFO_FILE_SIZE(&info) = SND_BUFFER_SIZE * SND_BUF_SLOTS;
+	PCM_INFO_CHANNEL(&info) = 1; // Mono
+	PCM_INFO_SAMPLING_BIT(&info) = 8; // 8 bits
+	PCM_INFO_SAMPLING_RATE(&info) = 22050; // 22050hz
+	PCM_INFO_SAMPLE_FILE(&info) = SND_BUFFER_SIZE * SND_BUF_SLOTS; // Number of samples in the file
+
+	pcm = PCM_CreateMemHandle(&para); // Prepare the handle
+	PCM_NotifyWriteSize(pcm, SND_BUFFER_SIZE * SND_BUF_SLOTS);
+
+	if (pcm == NULL) {
+		return NULL;
+	}
+
+	// Assign information to the pcm handle
+	PCM_SetPcmStreamNo(pcm, 0);
+	PCM_SetInfo(pcm, &info); // 
+	PCM_SetVolume(pcm, 7);
+	PCM_ChangePcmPara(pcm);
+	
+	return pcm;
+}
+
+void sat_restart_audio(void) {
+	//fprintf_saturn(stdout, "restart audio");
+	int idx;
+
+	// Stop pcm playing and clean up handles.
+	PCM_Stop(pcm[0]);
+	PCM_Stop(pcm[1]);
+
+	PCM_DestroyMemHandle(pcm[0]);
+	PCM_DestroyMemHandle(pcm[1]);
+
+	// Clean all the buffers
+	memset(ring_bufs, 0, SND_BUFFER_SIZE * 2 * SND_BUF_SLOTS);
+	memset(ring_bufs, 0, SND_BUFFER_SIZE * 2 * SND_BUF_SLOTS);
+
+	// Prepare new handles
+	pcm[0] = createHandle(0);
+	pcm[1] = createHandle(1);
+
+	buffer_filled[0] = 1;
+	buffer_filled[1] = 1;
+
+	// Restart playback
+	PCM_Start(pcm[0]); 
+	PCM_EntryNext(pcm[1]); 
+
+	curBuf = 0;
+
+	return;
+}
+
+void fill_buffer_slot(void) {
+	// Prepare the indexes of next slot/buffers.
+	int nextBuf = (curBuf + 1) % 2;
+	int nextSlot = (curSlot + 1) % SND_BUF_SLOTS;
+	int workingBuffer = curBuf;
+
+	// Avoid running if other parts of the program are in the critical section...
+	if(!buffer_filled[workingBuffer] && !((SatMutex*)(mix->_mutex))->access) { 
+		mix->mix((int8*)(snd_bufs[curBuf] + (curSlot * SND_BUFFER_SIZE)), SND_BUFFER_SIZE);
+
+		if(nextSlot == 0) { // We have filled this buffer 
+			buffer_filled[workingBuffer] = 1; // Mark it as full...
+			memcpy(ring_bufs[curBuf], snd_bufs[curBuf], SND_BUFFER_SIZE * SND_BUF_SLOTS);
+			curBuf = nextBuf; // ...and use the next buffer
+		}
+
+		curSlot = nextSlot;
+	}
+
+	return;
+}
+
+void play_manage_buffers(void) {
+	static int curPlyBuf = 0;
+	static Uint16 counter = 0;
+
+	if(buffer_filled[curBuf] == 0) return;
+
+	if ((PCM_CheckChange() == PCM_CHANGE_NO_ENTRY)) {
+		if(counter < 9000) {
+			PCM_DestroyMemHandle(pcm[curPlyBuf]); 			// Destroy old memory handle
+			pcm[curBuf] = createHandle(curPlyBuf); // and prepare a new one
+
+			PCM_EntryNext(pcm[curPlyBuf]); 
+	
+			buffer_filled[curPlyBuf] = 0;
+
+			curPlyBuf ^= 1;
+			counter++;
+		} else {
+			sat_restart_audio();
+			counter = 0;
+			curPlyBuf = 0;
+		}
+	}
+
+	// If audio gets stuck... restart it
+	if((PCM_GetPlayStatus(pcm[0]) == PCM_STAT_PLAY_END) || (PCM_GetPlayStatus(pcm[1]) == PCM_STAT_PLAY_END)) {
+		sat_restart_audio();
+		counter = 0;
+		curPlyBuf = 0;
+	}
+
+	return;
+}
+

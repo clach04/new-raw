@@ -27,8 +27,9 @@
 #include "sys.h"
 #include "util.h"
 
-#define MAX(x,y) ((x)>(y)?(x):(y))
-#define MIN(x,y) ((x)<(y)?(x):(y))
+// Already present in sega libraries...
+//#define MAX(x,y) ((x)>(y)?(x):(y))
+//#define MIN(x,y) ((x)<(y)?(x):(y))
 #define ARRAYSIZE(a) (sizeof(a)/sizeof(a[0]))
 
 template<typename T>

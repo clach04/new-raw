@@ -20,6 +20,7 @@
 #include "file.h"
 #include "resource.h"
 
+#include "saturn_print.h"
 
 Bank::Bank(const char *dataDir)
 	: _dataDir(dataDir) {
@@ -29,7 +30,7 @@ bool Bank::read(const MemEntry *me, uint8 *buf) {
 	bool ret = false;
 	char bankName[10];
 	sprintf(bankName, "bank%02x", me->bankNum);
-	File f;
+	File f(false);
 	if (f.open(bankName, _dataDir)) {
 		f.seek(me->bankPos);
 		if (me->packedSize == me->unpackedSize) {
@@ -41,6 +42,7 @@ bool Bank::read(const MemEntry *me, uint8 *buf) {
 			_iBuf = buf + me->packedSize - 4;
 			ret = unpack();
 		}
+
 	} else {
 		error("Bank::read() unable to open '%s'", bankName);
 	}
@@ -104,6 +106,7 @@ bool Bank::unpack() {
 }
 
 uint16 Bank::getCode(uint8 numChunks) {
+	//fprintf_saturn(stdout, "Bank::getCode(%u)", numChunks);
 	uint16 c = 0;
 	while (numChunks--) {
 		c <<= 1;
@@ -115,6 +118,7 @@ uint16 Bank::getCode(uint8 numChunks) {
 }
 
 bool Bank::nextChunk() {
+	//fprintf_saturn(stdout, "Bank::nextChunk()");
 	bool CF = rcr(false);
 	if (_unpCtx.chk == 0) {
 		assert(_iBuf >= _startBuf);
@@ -126,6 +130,7 @@ bool Bank::nextChunk() {
 }
 
 bool Bank::rcr(bool CF) {
+	//fprintf_saturn(stdout, "Bank::rcr()");
 	bool rCF = (_unpCtx.chk & 1);
 	_unpCtx.chk >>= 1;
 	if (CF) _unpCtx.chk |= 0x80000000;

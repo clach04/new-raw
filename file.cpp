@@ -16,9 +16,8 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#include "zlib.h"
 #include "file.h"
-
+#include "gfs_wrap.h"
 
 struct File_impl {
 	bool _ioErr;
@@ -31,35 +30,38 @@ struct File_impl {
 };
 
 struct stdFile : File_impl {
-	FILE *_fp;
+	GFS_FILE *_fp;
 	stdFile() : _fp(0) {}
 	bool open(const char *path, const char *mode) {
 		_ioErr = false;
-		_fp = fopen(path, mode);
+		_fp = sat_fopen(path); // We can really open as read only
 		return (_fp != NULL);
 	}
 	void close() {
 		if (_fp) {
-			fclose(_fp);
+			sat_fclose(_fp);
 			_fp = 0;
 		}
 	}
 	void seek(int32 off) {
 		if (_fp) {
-			fseek(_fp, off, SEEK_SET);
+			sat_fseek(_fp, off, SEEK_SET);
 		}
 	}
 	void read(void *ptr, uint32 size) {
 		if (_fp) {
-			uint32 r = fread(ptr, 1, size, _fp);
+			uint32 r = sat_fread(ptr, 1, size, _fp);
 			if (r != size) {
 				_ioErr = true;
 			}
 		}
 	}
+
+
+	// We cannot write this way on saturn...
 	void write(void *ptr, uint32 size) {
 		if (_fp) {
-			uint32 r = fwrite(ptr, 1, size, _fp);
+			uint32 r = 0;
 			if (r != size) {
 				_ioErr = true;
 			}
@@ -67,49 +69,8 @@ struct stdFile : File_impl {
 	}
 };
 
-struct zlibFile : File_impl {
-	gzFile _fp;
-	zlibFile() : _fp(0) {}
-	bool open(const char *path, const char *mode) {
-		_ioErr = false;
-		_fp = gzopen(path, mode);
-		return (_fp != NULL);
-	}
-	void close() {
-		if (_fp) {
-			gzclose(_fp);
-			_fp = 0;
-		}
-	}
-	void seek(int32 off) {
-		if (_fp) {
-			gzseek(_fp, off, SEEK_SET);
-		}
-	}
-	void read(void *ptr, uint32 size) {
-		if (_fp) {
-			uint32 r = gzread(_fp, ptr, size);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
-	void write(void *ptr, uint32 size) {
-		if (_fp) {
-			uint32 r = gzwrite(_fp, ptr, size);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
-};
-
-File::File(bool gzipped) {
-	if (gzipped) {
-		_impl = new zlibFile;
-	} else {
-		_impl = new stdFile;
-	}
+File::File(bool useless) {
+	_impl = new stdFile;
 }
 
 File::~File() {
@@ -119,15 +80,15 @@ File::~File() {
 
 bool File::open(const char *filename, const char *directory, const char *mode) {	
 	_impl->close();
-	char buf[512];
-	sprintf(buf, "%s/%s", directory, filename);
-	char *p = buf + strlen(directory) + 1;
-	string_lower(p);
-	bool opened = _impl->open(buf, mode);
-	if (!opened) { // let's try uppercase
-		string_upper(p);
-		opened = _impl->open(buf, mode);
-	}
+	//char buf[512];
+	//sprintf(buf, "%s/%s", directory, filename);
+	//char *p = buf + strlen(directory) + 1;
+	//string_lower(p);
+	bool opened = _impl->open(filename, mode);
+	//if (!opened) { // let's try uppercase
+	//	string_upper(p);
+	//	opened = _impl->open(buf, mode);
+	//}
 	return opened;
 }
 
@@ -154,15 +115,29 @@ uint8 File::readByte() {
 }
 
 uint16 File::readUint16BE() {
-	uint8 hi = readByte();
-	uint8 lo = readByte();
-	return (hi << 8) | lo;
+	uint16 shw;
+	read(&shw, 2);
+
+#ifdef SYS_LITTLE_ENDIAN
+	shw = ((shw >> 8) & 0x00FF) + ((shw << 8) & 0xFF00);
+#endif
+
+	return shw;
 }
 
 uint32 File::readUint32BE() {
-	uint16 hi = readUint16BE();
-	uint16 lo = readUint16BE();
-	return (hi << 16) | lo;
+	uint32 lw;
+
+	read(&lw, 4);
+	
+#ifdef SYS_LITTLE_ENDIAN
+	lw =  ((lw >> 24) & 0x000000FF) |
+		  ((lw >>  8) & 0x0000FF00) |
+		  ((lw <<  8) & 0x00FF0000) |
+		  ((lw << 24) & 0xFF000000);
+#endif
+
+	return lw;
 }
 
 void File::write(void *ptr, uint32 size) {

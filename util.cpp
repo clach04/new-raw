@@ -16,21 +16,25 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#include <sgl.h>
+#include <sl_def.h>
+#include <sega_sys.h>
+
 #include <cstdarg>
 #include "util.h"
-
+#include "saturn_print.h"
 
 uint16 g_debugMask;
 
 void debug(uint16 cm, const char *msg, ...) {
 	char buf[1024];
-	if (cm & g_debugMask) {
+	if (/*cm & DBG_SND*/0) {
 		va_list va;
 		va_start(va, msg);
 		vsprintf(buf, msg, va);
 		va_end(va);
-		printf("%s\n", buf);
-		fflush(stdout);
+		fprintf_saturn(stdout, "%s\n", buf);
+		//fflush(stdout);
 	}
 }
 
@@ -40,17 +44,19 @@ void error(const char *msg, ...) {
 	va_start(va, msg);
 	vsprintf(buf, msg, va);
 	va_end(va);
-	fprintf(stderr, "ERROR: %s!\n", buf);
-	exit(-1);
+	fprintf_saturn(stderr, "ERROR: %s!\n", buf);
+	SYS_Exit(0);
 }
 
 void warning(const char *msg, ...) {
+	return;
+
 	char buf[1024];
 	va_list va;
 	va_start(va, msg);
 	vsprintf(buf, msg, va);
 	va_end(va);
-	fprintf(stderr, "WARNING: %s!\n", buf);
+	fprintf_saturn(stderr, "WARNING: %s!\n", buf);
 }
 
 void string_lower(char *p) {

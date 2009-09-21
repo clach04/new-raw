@@ -21,7 +21,9 @@
 #include "resource.h"
 #include "serializer.h"
 #include "systemstub.h"
+#include "saturn_print.h"
 
+SfxPlayer *sfx = NULL;
 
 SfxPlayer::SfxPlayer(Mixer *mix, Resource *res, SystemStub *stub)
 	: _mix(mix), _res(res), _stub(stub), _delay(0), _resNum(0) {
@@ -93,7 +95,8 @@ void SfxPlayer::start() {
 	debug(DBG_SND, "SfxPlayer::start()");
 	MutexStack(_stub, _mutex);
 	_sfxMod.curPos = 0;
-	_timerId = _stub->addTimer(_delay, eventsCallback, this);			
+	_timerId = _stub->addTimer(_delay, eventsCallback, this);	
+	sfx = this;
 }
 
 void SfxPlayer::stop() {
@@ -195,9 +198,10 @@ void SfxPlayer::handlePattern(uint8 channel, const uint8 *data) {
 }
 
 uint32 SfxPlayer::eventsCallback(uint32 interval, void *param) {
-	SfxPlayer *p = (SfxPlayer *)param;
-	p->handleEvents();
-	return p->_delay;
+	//fprintf_saturn(stdout,"SfxPlayer::eventsCallback()");
+	// TODO: Re enable this once sound is ok
+	sfx->handleEvents();
+	return sfx->_delay;
 }
 
 void SfxPlayer::saveOrLoad(Serializer &ser) {

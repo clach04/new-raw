@@ -16,6 +16,8 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#include <sl_def.h>
+
 #include <ctime>
 #include "logic.h"
 #include "mixer.h"
@@ -451,7 +453,7 @@ void Logic::executeScript() {
 }
 
 void Logic::inp_updatePlayer() {
-	_stub->processEvents();
+	//_stub->processEvents();
 	if (_res->_curPtrsId == 0x3E89) {
 		char c = _stub->_pi.lastChar;
 		if (c == 8 | /*c == 0xD |*/ c == 0 | (c >= 'a' && c <= 'z')) {
@@ -497,11 +499,13 @@ void Logic::inp_updatePlayer() {
 void Logic::inp_handleSpecialKeys() {
 	if (_stub->_pi.pause) {
 		if (_res->_curPtrsId != 0x3E80 && _res->_curPtrsId != 0x3E81) {
+			_stub->fadePal();
 			_stub->_pi.pause = false;
 			while (!_stub->_pi.pause) {
-				_stub->processEvents();
+				//_stub->processEvents();
 				_stub->sleep(200);
 			}
+			_stub->restorePal();
 		}
 		_stub->_pi.pause = false;
 	}

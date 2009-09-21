@@ -20,6 +20,7 @@
 #define __BANK_H__
 
 #include "intern.h"
+#include <sega_mem.h>
 
 struct MemEntry;
 
@@ -31,6 +32,16 @@ struct UnpackContext {
 };
 
 struct Bank {
+#ifdef _OVERLOAD_NEW_
+	void * operator new ( size_t size ) {
+		return MEM_Malloc(size);
+	}
+
+	void operator delete (void* location) {
+		MEM_Free(location);
+	}
+#endif
+
 	UnpackContext _unpCtx;
 	const char *_dataDir;
 	uint8 *_iBuf, *_oBuf, *_startBuf;
