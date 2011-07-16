@@ -15,6 +15,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
+#include <nds.h>
+#include <fat.h>
 
 #include "resource.h"
 #include "bank.h"
@@ -25,6 +27,7 @@
 
 Resource::Resource(Video *vid, const char *dataDir) 
 	: _vid(vid), _dataDir(dataDir) {
+  _curPtrsId = 0;
 }
 
 void Resource::readBank(const MemEntry *me, uint8 *dstBuf) {

@@ -20,7 +20,6 @@
 #include "serializer.h"
 #include "systemstub.h"
 
-
 static int8 addclamp(int a, int b) {
 	int add = a + b;
 	if (add < -128) {

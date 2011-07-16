@@ -30,6 +30,7 @@ Engine::Engine(SystemStub *stub, const char *dataDir, const char *saveDir)
 void Engine::run() {
 	_stub->init("Out Of This World");
 	setup();
+
 	_log.restartAt(0x3E80); // demo starts at 0x3E81
 	while (!_stub->_pi.quit) {
 		_log.setupScripts();

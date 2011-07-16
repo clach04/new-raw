@@ -24,7 +24,9 @@
 #include "serializer.h"
 #include "sfxplayer.h"
 #include "systemstub.h"
+#include "stdio.h"
 
+static uint32 tstamp = 0;
 
 Logic::Logic(Mixer *mix, Resource *res, SfxPlayer *ply, Video *vid, SystemStub *stub)
 	: _mix(mix), _res(res), _ply(ply), _vid(vid), _stub(stub) {
@@ -36,6 +38,7 @@ void Logic::init() {
 	_scriptVars[VAR_RANDOM_SEED] = time(0);
 	_fastMode = false;
 	_ply->_markVar = &_scriptVars[VAR_MUS_MARK];
+  tstamp = 0;
 }
 
 void Logic::op_movConst() {
@@ -244,7 +247,6 @@ void Logic::op_updateDisplay() {
 		_scriptVars[0xDC] = 0x21;
 	}
 
-	static uint32 tstamp = 0;
 	if (!_fastMode) {
 		int32 delay = _stub->getTimeStamp() - tstamp;
 		int32 pause = _scriptVars[VAR_PAUSE_SLICES] * 20 - delay;
@@ -454,7 +456,7 @@ void Logic::inp_updatePlayer() {
 	_stub->processEvents();
 	if (_res->_curPtrsId == 0x3E89) {
 		char c = _stub->_pi.lastChar;
-		if (c == 8 | /*c == 0xD |*/ c == 0 | (c >= 'a' && c <= 'z')) {
+		if ( (c == 8) | /*c == 0xD |*/ (c == 0) | (c >= 'a' && c <= 'z')) {
 			_scriptVars[VAR_LAST_KEYCHAR] = c & ~0x20;
 			_stub->_pi.lastChar = 0;
 		}
@@ -541,6 +543,7 @@ void Logic::snd_playSound(uint16 resNum, uint8 freq, uint8 vol, uint8 channel) {
 
 void Logic::snd_playMusic(uint16 resNum, uint16 delay, uint8 pos) {
 	debug(DBG_SND, "snd_playMusic(0x%X, %d, %d)", resNum, delay, pos);
+
 	if (resNum != 0) {
 		_ply->loadSfxModule(resNum, delay, pos);
 		_ply->start();

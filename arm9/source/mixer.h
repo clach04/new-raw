@@ -55,7 +55,7 @@ struct Mixer {
 	void playChannel(uint8 channel, const MixerChunk *mc, uint16 freq, uint8 volume);
 	void stopChannel(uint8 channel);
 	void setChannelVolume(uint8 channel, uint8 volume);
-	void stopAll();
+  void stopAll();
 	void mix(int8 *buf, int len);
 
 	static void mixCallback(void *param, uint8 *buf, int len);

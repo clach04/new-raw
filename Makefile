@@ -1,27 +1,47 @@
+export DEVKITARM := /d/ndsdev/devkitARM
+export DEVKITPRO := /d/ndsdev/
 
-SDL_CFLAGS = `sdl-config --cflags`
-SDL_LIBS = `sdl-config --libs`
+VERSION=1.0
 
-DEFINES = -DSYS_LITTLE_ENDIAN
+#---------------------------------------------------------------------------------
+.SUFFIXES:
+#---------------------------------------------------------------------------------
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
+endif
 
-CXX = g++
-CXXFLAGS:= -g -O -Wall -Wuninitialized -Wno-unknown-pragmas -Wshadow -Wstrict-prototypes
-CXXFLAGS+= -Wimplicit -Wundef -Wreorder -Wwrite-strings -Wnon-virtual-dtor -Wno-multichar
-CXXFLAGS+= $(SDL_CFLAGS) $(DEFINES)
+include $(DEVKITARM)/ds_rules
 
-SRCS = bank.cpp file.cpp engine.cpp logic.cpp mixer.cpp resource.cpp sdlstub.cpp \
-	serializer.cpp sfxplayer.cpp staticres.cpp util.cpp video.cpp main.cpp
+export TARGET		:=	$(shell basename $(CURDIR))
+export TOPDIR		:=	$(CURDIR)
 
-OBJS = $(SRCS:.cpp=.o)
-DEPS = $(SRCS:.cpp=.d)
+ICON 		:= -b $(CURDIR)/logo.bmp "AnotherWorld $(VERSION);AlekMaul;http://www.portabledev.com"
 
-raw: $(OBJS)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(SDL_LIBS) -lz
+.PHONY: arm7/$(TARGET).elf arm9/$(TARGET).elf
 
-.cpp.o:
-	$(CXX) $(CXXFLAGS) -MMD -c $< -o $*.o
+#---------------------------------------------------------------------------------
+# main targets
+#---------------------------------------------------------------------------------
+all: $(TARGET).nds
 
+#---------------------------------------------------------------------------------
+$(TARGET).nds	:	arm7/$(TARGET).elf arm9/$(TARGET).elf
+	ndstool	-c $(TARGET).nds -7 arm7/$(TARGET).elf -9 arm9/$(TARGET).elf $(ICON)
+	cp $(TARGET).nds $(TARGET)_fs.nds
+#	dlditool r4tf $(TARGET)_fs.nds
+	cp $(TARGET).nds ANOTHERWORLD/debug$(TARGET).nds
+	rm "ANOTHERWORLD/debug$(TARGET)_nogba.nds"
+  
+#---------------------------------------------------------------------------------
+arm7/$(TARGET).elf:
+	$(MAKE) -C arm7
+	
+#---------------------------------------------------------------------------------
+arm9/$(TARGET).elf:
+	$(MAKE) -C arm9
+
+#---------------------------------------------------------------------------------
 clean:
-	rm -f *.o *.d
-
--include $(DEPS)
+	$(MAKE) -C arm9 clean
+	$(MAKE) -C arm7 clean
+	rm -f $(TARGET).nds $(TARGET).arm7 $(TARGET).arm9

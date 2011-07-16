@@ -16,10 +16,74 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#include <SDL.h>
+//ALEK #include <SDL.h>
+#include <nds.h>
+#include <nds/fifomessages.h>
+
 #include "systemstub.h"
 #include "util.h"
 
+
+typedef enum {
+  EMUARM7_INIT_SND = 0x123C,
+  EMUARM7_STOP_SND = 0x123D,
+  EMUARM7_PLAY_SND = 0x123E,
+} FifoMesType;
+
+
+#define  cxBG (0<<8)
+#define  cyBG (0<<8)     //(20<<8);
+#define  xdxBG (((320 / 256) << 8) | (320 % 256))
+#define  ydyBG (((200 / 192) << 8) | (200 % 192))
+
+extern int bg0, bg1, bg0b, bg1b;
+
+volatile u32 emuFps;                     // Fps to display
+volatile u32 emuActFrames;               // Actual number of frames 
+volatile u16 g_framePending = 0;           // To manage Vcount and VBL Interrupt
+
+void vblankIntr() {
+static const u16 jitter4[] = {
+  0x60, 0x40,		// 0.375, 0.250 
+  0x20, 0xc0,		// 0.125, 0.750
+  0xe0, 0x40,		// 0.875, 0.250
+  0xa0, 0xc0,		// 0.625, 0.750
+};
+  
+	if(g_framePending == 2) {
+		g_framePending = 0;
+		emuActFrames++;
+	}
+
+  //antialias tile layer
+  static u16 sTime = 0;
+  static u16 sIndex = 0;
+
+  REG_BG2PA = xdxBG ; REG_BG2PB = 0; REG_BG2PC =0; REG_BG2PD = ydyBG; 
+  REG_BG3PA = xdxBG;  REG_BG3PB = 0; REG_BG3PC =0; REG_BG3PD = ydyBG; 
+  
+  REG_BG2X = cxBG+jitter4[sIndex +0]; 
+  REG_BG2Y = jitter4[sIndex +1]; 
+  REG_BG3X = cxBG+jitter4[sIndex +2]; 
+  REG_BG3Y = jitter4[sIndex +3]; 
+
+	sIndex += 4;
+	if(sIndex >= 8) sIndex = 0;
+  
+	sTime++;
+	if(sTime >= 60) {
+		sTime = 0;
+		emuFps = emuActFrames;
+		emuActFrames = 0;
+	}
+}
+
+// VBL Interrupt
+static void vcountIntr() {
+	if (g_framePending == 1 && REG_VCOUNT < 192) {
+		g_framePending = 2;
+	}
+}
 
 struct SDLStub : SystemStub {
 	typedef void (SDLStub::*ScaleProc)(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
@@ -39,8 +103,8 @@ struct SDLStub : SystemStub {
 	static const Scaler _scalers[];
 
 	uint8 *_offscreen;
-	SDL_Surface *_screen;
-	SDL_Surface *_sclscreen;
+	//ALEK SDL_Surface *_screen;
+	//ALEK SDL_Surface *_sclscreen;
 	bool _fullscreen;
 	uint8 _scaler;
 	uint16 _pal[16];
@@ -70,42 +134,84 @@ struct SDLStub : SystemStub {
 	void point1x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
 	void point2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
 	void point3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void scale2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	void scale3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h);
-	
 };
 
 const SDLStub::Scaler SDLStub::_scalers[] = {
 	{ "Point1x", &SDLStub::point1x, 1 },
 	{ "Point2x", &SDLStub::point2x, 2 },
-	{ "Scale2x", &SDLStub::scale2x, 2 },
-	{ "Point3x", &SDLStub::point3x, 3 },
-	{ "Scale3x", &SDLStub::scale3x, 3 }
+	{ "Point3x", &SDLStub::point3x, 3 }
 };
-
 
 SystemStub *SystemStub_SDL_create() {
 	return new SDLStub();
 }
 
+// a millisecond counter
+volatile int milliseconds=0;
+
+void timer0_function( void ) {
+  // increment milliseconds
+  milliseconds++;
+} 
+
 void SDLStub::init(const char *title) {
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
-	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
-	SDL_ShowCursor(SDL_DISABLE);
-	SDL_WM_SetCaption(title, NULL);
 	memset(&_pi, 0, sizeof(_pi));
+  if (_offscreen) free(_offscreen);
 	_offscreen = (uint8 *)malloc(SCREEN_W * SCREEN_H * 2);
+/*
 	if (!_offscreen) {
 		error("Unable to allocate offscreen buffer");
 	}
-	_fullscreen = false;
-	_scaler = 1;
+*/
+  // Prepare DS graphic mode
+ 	videoSetMode(MODE_5_2D | DISPLAY_BG2_ACTIVE | DISPLAY_BG3_ACTIVE);
+  vramSetBankA(VRAM_A_MAIN_BG_0x06000000);
+  vramSetBankB(VRAM_B_MAIN_BG_0x06020000 );
+  bg0 = bgInit(3, BgType_Bmp8, BgSize_B8_512x512, 0,0);
+  bg1 = bgInit(2, BgType_Bmp8, BgSize_B8_512x512, 0,0);
+
+  REG_BLDCNT = BLEND_ALPHA | BLEND_SRC_BG2 | BLEND_DST_BG3;
+  REG_BLDALPHA = (8 << 8) | 8; // 50% / 50% 
+
+  REG_BG2PB = 0;
+  REG_BG2PC = 0;
+  REG_BG3PB = 0;
+  REG_BG3PC = 0;
+
+  REG_BG2X = cxBG; 
+  REG_BG2Y = cyBG; 
+  REG_BG3X = cxBG; 
+  REG_BG3Y = cyBG; 
+  REG_BG2PA = xdxBG ; 
+  REG_BG2PD = ydyBG; 
+  REG_BG3PA = xdxBG; 
+  REG_BG3PD = ydyBG; 
+  
+  // Prepare timer for tick 
+  milliseconds=0;
+  irqSet( IRQ_TIMER0, timer0_function ); 
+  TIMER0_DATA = (u16) TIMER_FREQ(1000);
+  TIMER0_CR = TIMER_ENABLE | TIMER_IRQ_REQ; 
+  irqEnable(IRQ_TIMER0); 
+   
+	_fullscreen = true;
+	_scaler = 0;
 	prepareGfxMode();
+  
+    // Init vbl and hbl func
+	SetYtrigger(190); //trigger 2 lines before vsync
+	irqSet(IRQ_VBLANK, vblankIntr);
+	irqSet(IRQ_VCOUNT, vcountIntr);
+  irqEnable(IRQ_VBLANK | IRQ_VCOUNT);
 }
 
 void SDLStub::destroy() {
+  irqDisable(IRQ_TIMER0); 
+  irqDisable(IRQ_TIMER1); 
+  irqDisable(IRQ_TIMER2); 
+
 	cleanupGfxMode();
-	SDL_Quit();
+	//ALEK SDL_Quit();
 }
 
 void SDLStub::setPalette(uint8 s, uint8 n, const uint8 *buf) {
@@ -116,186 +222,176 @@ void SDLStub::setPalette(uint8 s, uint8 n, const uint8 *buf) {
 			uint8 col = buf[i * 3 + j];
 			c[j] =  (col << 2) | (col & 3);
 		}
-		_pal[i] = SDL_MapRGB(_screen->format, c[0], c[1], c[2]);
+    BG_PALETTE[i] = RGB15( (c[0]>>3), (c[1]>>3), (c[2]>>3) );
+		//_pal[i] = SDL_MapRGB(_screen->format, c[0], c[1], c[2]);
 	}	
 }
 
 void SDLStub::copyRect(uint16 x, uint16 y, uint16 w, uint16 h, const uint8 *buf, uint32 pitch) {
-	buf += y * pitch + x;
+	//buf += y * pitch + x;
 	uint16 *p = (uint16 *)_offscreen;
+  uint16 b=0;
 	while (h--) {
 		for (int i = 0; i < w / 2; ++i) {
 			uint8 p1 = *(buf + i) >> 4;
 			uint8 p2 = *(buf + i) & 0xF;
-			*(p + i * 2 + 0) = _pal[p1];
-			*(p + i * 2 + 1) = _pal[p2];
+			*(p + i + 0) = p1 | (p2<<8);
+			//*(p + i * 2 + 1) = p2;
 		}
+    dmaCopy( p, bgGetGfxPtr(bg0)+b, 320);
 		p += SCREEN_W;
+    b += 256;
 		buf += pitch;
 	}
-	SDL_LockSurface(_sclscreen);
-	(this->*_scalers[_scaler].proc)((uint16 *)_sclscreen->pixels, _sclscreen->pitch, (uint16 *)_offscreen, SCREEN_W, SCREEN_W, SCREEN_H);
-	SDL_UnlockSurface(_sclscreen);
-	SDL_BlitSurface(_sclscreen, NULL, _screen, NULL);
-	SDL_UpdateRect(_screen, 0, 0, 0, 0);
+  g_framePending = 1;
 }
 
 void SDLStub::processEvents() {
-	SDL_Event ev;
-	while(SDL_PollEvent(&ev)) {
-		switch (ev.type) {
-		case SDL_QUIT:
-			_pi.quit = true;
-			break;
-		case SDL_KEYUP:
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				_pi.dirMask &= ~PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				_pi.dirMask &= ~PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
-				_pi.dirMask &= ~PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
-				_pi.dirMask &= ~PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
-				_pi.button = false;
-				break;
-			default:
-				break;
-			}
-			break;
-		case SDL_KEYDOWN:
-			if (ev.key.keysym.mod & KMOD_ALT) {
-				if (ev.key.keysym.sym == SDLK_RETURN) {
-					switchGfxMode(!_fullscreen, _scaler);
-				} else if (ev.key.keysym.sym == SDLK_KP_PLUS) {
-					uint8 s = _scaler + 1;
-					if (s < ARRAYSIZE(_scalers)) {
-						switchGfxMode(_fullscreen, s);
-					}
-				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
-					int8 s = _scaler - 1;
-					if (_scaler > 0) {
-						switchGfxMode(_fullscreen, s);
-					}
-				} else if (ev.key.keysym.sym == SDLK_x) {
-					_pi.quit = true;
-				}
-				break;
-			} else if (ev.key.keysym.mod & KMOD_CTRL) {
-				if (ev.key.keysym.sym == SDLK_s) {
-					_pi.save = true;
-				} else if (ev.key.keysym.sym == SDLK_l) {
-					_pi.load = true;
-				} else if (ev.key.keysym.sym == SDLK_f) {
-					_pi.fastMode = true;
-				} else if (ev.key.keysym.sym == SDLK_KP_PLUS) {
-					_pi.stateSlot = 1;
-				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
-					_pi.stateSlot = -1;
-				}
-				break;
-			}
-			_pi.lastChar = ev.key.keysym.sym;
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				_pi.dirMask |= PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				_pi.dirMask |= PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
-				_pi.dirMask |= PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
-				_pi.dirMask |= PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
-				_pi.button = true;
-				break;
-			case SDLK_c:
-				_pi.code = true;
-				break;
-			case SDLK_p:
-				_pi.pause = true;
-				break;
-			default:
-				break;
-			}
-			break;
-		default:
-			break;
-		}
+  int keypressed=keysCurrent();
+  
+  _pi.dirMask &= ~PlayerInput::DIR_UP;
+  _pi.dirMask &= ~PlayerInput::DIR_LEFT;
+  _pi.dirMask &= ~PlayerInput::DIR_RIGHT;
+  _pi.dirMask &= ~PlayerInput::DIR_DOWN;
+  _pi.button = false;
+  
+  if (keypressed & KEY_R) {
+    _pi.save = true;
+  }
+  if (keypressed & KEY_L) {
+    _pi.load = true;
+  }
+  if ( (keypressed & KEY_LEFT) ) {
+    _pi.dirMask |= PlayerInput::DIR_LEFT;
+  }
+  if ( (keypressed & KEY_RIGHT) ) {
+    _pi.dirMask |= PlayerInput::DIR_RIGHT;
+  }
+  if ( (keypressed & (KEY_UP | KEY_B) ) ) {
+    _pi.dirMask |= PlayerInput::DIR_UP;
+  }
+  if ( (keypressed & KEY_DOWN) ) {
+    _pi.dirMask |= PlayerInput::DIR_DOWN;
+  }
+  if ( (keypressed & KEY_A) ) {
+    _pi.button = true;
+  }
+  if ( (keypressed & KEY_SELECT) ) {
+    _pi.code = true;
+  }
+  if ( (keypressed & KEY_START) ) {
+    _pi.pause = true;
+  }
+	if (keypressed & KEY_TOUCH) {
+		_pi.quit = true;
 	}
-}
-
-void SDLStub::sleep(uint32 duration) {
-	SDL_Delay(duration);
 }
 
 uint32 SDLStub::getTimeStamp() {
-	return SDL_GetTicks();	
+  return milliseconds; 
+}
+
+void SDLStub::sleep(uint32 duration) {
+//ALEK 	SDL_Delay(duration);
+  uint32 debtime=getTimeStamp();
+  while (getTimeStamp()-debtime<duration);
+}
+
+signed char sound_buffer[2048];
+signed char *psound_buffer=(signed char *) &sound_buffer;
+#include "mixer.h"
+Mixer *theMixer;
+
+void TimerMixCallBackEvent(void) {
+  psound_buffer++;
+  if (psound_buffer >= &sound_buffer[2048]) psound_buffer=(signed char *) &sound_buffer;
+	theMixer->mix(psound_buffer,1);
 }
 
 void SDLStub::startAudio(AudioCallback callback, void *param) {
-	SDL_AudioSpec desired;
-	memset(&desired, 0, sizeof(desired));
-
-	desired.freq = SOUND_SAMPLE_RATE;
-	desired.format = AUDIO_S8;
-	desired.channels = 1;
-	desired.samples = 2048;
-	desired.callback = callback;
-	desired.userdata = param;
-	if (SDL_OpenAudio(&desired, NULL) == 0) {
-		SDL_PauseAudio(0);
-	} else {
-		error("SDLStub::startAudio() unable to open sound device");
-	}
+  FifoMessage msg;
+  msg.SoundPlay.data =  sound_buffer;
+  msg.SoundPlay.freq = 22050;
+	msg.SoundPlay.volume = 127;
+	msg.SoundPlay.pan = 64;
+	msg.SoundPlay.loop = 1;
+	msg.SoundPlay.format = ((1)<<4) | SoundFormat_8Bit;
+  msg.SoundPlay.loopPoint = 0;
+  msg.SoundPlay.dataSize = 2048 >> 2;
+  msg.type = EMUARM7_PLAY_SND;
+  fifoSendDatamsg(FIFO_USER_01, sizeof(msg), (u8*)&msg);
+      
+  theMixer =  (Mixer *) param;   
+  psound_buffer=sound_buffer;
+  irqSet(IRQ_TIMER1, TimerMixCallBackEvent);  
+  TIMER1_DATA = TIMER_FREQ(22050);                        
+  TIMER1_CR = TIMER_DIV_1 | TIMER_IRQ_REQ | TIMER_ENABLE;	     
+  irqEnable(IRQ_TIMER1); 
 }
 
 void SDLStub::stopAudio() {
-	SDL_CloseAudio();
+  irqDisable(IRQ_TIMER1); 
+  irqDisable(IRQ_TIMER2); 
+	//ALEK SDL_CloseAudio();
 }
 
 uint32 SDLStub::getOutputSampleRate() {
 	return SOUND_SAMPLE_RATE;
 }
 
+#include "sfxplayer.h"
+SfxPlayer *thePlayer;
+
+void TimerCallBackEvent(void) {
+	thePlayer->handleEvents();
+}
+
 void *SDLStub::addTimer(uint32 delay, TimerCallback callback, void *param) {
-	return SDL_AddTimer(delay, (SDL_NewTimerCallback)callback, param);
+	// ALEK return SDL_AddTimer(delay, (SDL_NewTimerCallback)callback, param);
+  if (delay != 0) {
+    thePlayer = (SfxPlayer *) param;
+    if (delay<1000)  {
+      short valtimer=0xFFFF-((32768*delay)/1000);
+      TIMER2_DATA = valtimer;
+      TIMER2_CR = TIMER_ENABLE | TIMER_DIV_1024 | TIMER_IRQ_REQ;
+      irqSet(IRQ_TIMER2, TimerCallBackEvent);
+      irqEnable(IRQ_TIMER2);
+    }
+    else
+      irqDisable(IRQ_TIMER2);
+  }
+  else 
+    irqDisable(IRQ_TIMER2);
 }
 
 void SDLStub::removeTimer(void *timerId) {
-	SDL_RemoveTimer((SDL_TimerID)timerId);
+	//ALEK SDL_RemoveTimer((SDL_TimerID)timerId);
+  irqDisable(IRQ_TIMER2);
 }
 
 void *SDLStub::createMutex() {
-	return SDL_CreateMutex();
+	//ALEK return SDL_CreateMutex();
 }
 
 void SDLStub::destroyMutex(void *mutex) {
-	SDL_DestroyMutex((SDL_mutex *)mutex);
+	//ALEK SDL_DestroyMutex((SDL_mutex *)mutex);
 }
 
 void SDLStub::lockMutex(void *mutex) {
-	SDL_mutexP((SDL_mutex *)mutex);
+	//ALEK SDL_mutexP((SDL_mutex *)mutex);
 }
 
 void SDLStub::unlockMutex(void *mutex) {
-	SDL_mutexV((SDL_mutex *)mutex);
+	//ALEK SDL_mutexV((SDL_mutex *)mutex);
 }
 
 void SDLStub::prepareGfxMode() {
-	int w = SCREEN_W * _scalers[_scaler].factor;
+	/*ALEK
+  int w = SCREEN_W * _scalers[_scaler].factor;
 	int h = SCREEN_H * _scalers[_scaler].factor;
-	_screen = SDL_SetVideoMode(w, h, 16, _fullscreen ? (SDL_FULLSCREEN | SDL_HWSURFACE) : SDL_HWSURFACE);
+  
+	_screen = SDL_SetVideoMode(w, h, 16, VIDEO_MODE);
+
 	if (!_screen) {
 		error("SDLStub::prepareGfxMode() unable to allocate _screen buffer");
 	}
@@ -306,7 +402,7 @@ void SDLStub::prepareGfxMode() {
 						_screen->format->Amask);
 	if (!_sclscreen) {
 		error("SDLStub::prepareGfxMode() unable to allocate _sclscreen buffer");
-	}
+	}*/
 }
 
 void SDLStub::cleanupGfxMode() {
@@ -314,24 +410,12 @@ void SDLStub::cleanupGfxMode() {
 		free(_offscreen);
 		_offscreen = 0;
 	}
-	if (_sclscreen) {
-		SDL_FreeSurface(_sclscreen);
-		_sclscreen = 0;
-	}
-	if (_screen) {
-		SDL_FreeSurface(_screen);
-		_screen = 0;
-	}
 }
 
 void SDLStub::switchGfxMode(bool fullscreen, uint8 scaler) {
-	SDL_Surface *prev_sclscreen = _sclscreen;
-	SDL_FreeSurface(_screen); 	
 	_fullscreen = fullscreen;
 	_scaler = scaler;
 	prepareGfxMode();
-	SDL_BlitSurface(prev_sclscreen, NULL, _sclscreen, NULL);
-	SDL_FreeSurface(prev_sclscreen);
 }
 
 void SDLStub::point1x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
@@ -374,74 +458,6 @@ void SDLStub::point3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 sr
 			*(p + 0 + dstPitch * 2) = c;
 			*(p + 1 + dstPitch * 2) = c;
 			*(p + 2 + dstPitch * 2) = c;
-		}
-		dst += dstPitch * 3;
-		src += srcPitch;
-	}
-}
-
-void SDLStub::scale2x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 2) {
-			uint16 B = *(src + i - srcPitch);
-			uint16 D = *(src + i - 1);
-			uint16 E = *(src + i);
-			uint16 F = *(src + i + 1);
-			uint16 H = *(src + i + srcPitch);
-			if (B != H && D != F) {
-				*(p) = D == B ? D : E;
-				*(p + 1) = B == F ? F : E;
-				*(p + dstPitch) = D == H ? D : E;
-				*(p + dstPitch + 1) = H == F ? F : E;
-			} else {
-				*(p) = E;
-				*(p + 1) = E;
-				*(p + dstPitch) = E;
-				*(p + dstPitch + 1) = E;
-			}
-		}
-		dst += dstPitch * 2;
-		src += srcPitch;
-	}
-}
-
-void SDLStub::scale3x(uint16 *dst, uint16 dstPitch, const uint16 *src, uint16 srcPitch, uint16 w, uint16 h) {
-	dstPitch >>= 1;
-	while (h--) {
-		uint16 *p = dst;
-		for (int i = 0; i < w; ++i, p += 3) {
-			uint16 A = *(src + i - srcPitch - 1);
-			uint16 B = *(src + i - srcPitch);
-			uint16 C = *(src + i - srcPitch + 1);
-			uint16 D = *(src + i - 1);
-			uint16 E = *(src + i);
-			uint16 F = *(src + i + 1);
-			uint16 G = *(src + i + srcPitch - 1);
-			uint16 H = *(src + i + srcPitch);
-			uint16 I = *(src + i + srcPitch + 1);
-			if (B != H && D != F) {
-				*(p) = D == B ? D : E;
-				*(p + 1) = (D == B && E != C) || (B == F && E != A) ? B : E;
-				*(p + 2) = B == F ? F : E;
-				*(p + dstPitch) = (D == B && E != G) || (D == B && E != A) ? D : E;
-				*(p + dstPitch + 1) = E;
-				*(p + dstPitch + 2) = (B == F && E != I) || (H == F && E != C) ? F : E;
-				*(p + 2 * dstPitch) = D == H ? D : E;
-				*(p + 2 * dstPitch + 1) = (D == H && E != I) || (H == F && E != G) ? H : E;
-				*(p + 2 * dstPitch + 2) = H == F ? F : E;
-			} else {
-				*(p) = E;
-				*(p + 1) = E;
-				*(p + 2) = E;
-				*(p + dstPitch) = E;
-				*(p + dstPitch + 1) = E;
-				*(p + dstPitch + 2) = E;
-				*(p + 2 * dstPitch) = E;
-				*(p + 2 * dstPitch + 1) = E;
-				*(p + 2 * dstPitch + 2) = E;
-			}
 		}
 		dst += dstPitch * 3;
 		src += srcPitch;

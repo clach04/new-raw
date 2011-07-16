@@ -40,7 +40,9 @@ void error(const char *msg, ...) {
 	va_start(va, msg);
 	vsprintf(buf, msg, va);
 	va_end(va);
-	fprintf(stderr, "ERROR: %s!\n", buf);
+  consoleDemoInit();
+	printf("ERROR: %s!\n", buf);
+  while (keysCurrent());while (!keysCurrent());while (keysCurrent());
 	exit(-1);
 }
 
@@ -50,7 +52,8 @@ void warning(const char *msg, ...) {
 	va_start(va, msg);
 	vsprintf(buf, msg, va);
 	va_end(va);
-	fprintf(stderr, "WARNING: %s!\n", buf);
+	//ALEK fprintf(stderr, "WARNING: %s!\n", buf);
+  //ALEK while (keysCurrent());while (!keysCurrent());while (keysCurrent());
 }
 
 void string_lower(char *p) {
