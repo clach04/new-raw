@@ -20,38 +20,40 @@
 #define __ENGINE_H__
 
 #include "intern.h"
-#include "logic.h"
+#include "vm.h"
 #include "mixer.h"
 #include "sfxplayer.h"
 #include "resource.h"
 #include "video.h"
 
-struct SystemStub;
+struct System;
 
 struct Engine {
 	enum {
 		MAX_SAVE_SLOTS = 100
 	};
 
-	SystemStub *_stub;
-	Logic _log;
-	Mixer _mix;
-	Resource _res;
-	SfxPlayer _ply;
-	Video _vid;
+	System *sys;
+	VirtualMachine vm;
+	Mixer mixer;
+	Resource res;
+	SfxPlayer player;
+	Video video;
 	const char *_dataDir, *_saveDir;
-	uint8 _stateSlot;
+	uint8_t _stateSlot;
 
-	Engine(SystemStub *stub, const char *dataDir, const char *saveDir);
+	Engine(System *stub, const char *dataDir, const char *saveDir);
+	~Engine();
 
 	void run();
-	void setup();
+	void init();
 	void finish();
 	void processInput();
 	
-	void makeGameStateName(uint8 slot, char *buf);
-	void saveGameState(uint8 slot, const char *desc);
-	void loadGameState(uint8 slot);
+	void makeGameStateName(uint8_t slot, char *buf);
+	void saveGameState(uint8_t slot, const char *desc);
+	void loadGameState(uint8_t slot);
+	const char* getDataDir();
 };
 
 #endif

@@ -22,43 +22,47 @@
 #include "intern.h"
 
 struct MixerChunk {
-	const uint8 *data;
-	uint16 len;
-	uint16 loopPos;
-	uint16 loopLen;
+	const uint8_t *data;
+	uint16_t len;
+	uint16_t loopPos;
+	uint16_t loopLen;
 };
 
 struct MixerChannel {
-	uint8 active;
-	uint8 volume;
+	uint8_t active;
+	uint8_t volume;
 	MixerChunk chunk;
-	uint32 chunkPos;
-	uint32 chunkInc;
+	uint32_t chunkPos;
+	uint32_t chunkInc;
 };
 
 struct Serializer;
-struct SystemStub;
+struct System;
+
+#define AUDIO_NUM_CHANNELS 4
 
 struct Mixer {
-	enum {
-		NUM_CHANNELS = 4
-	};
+
 
 	void *_mutex;
-	SystemStub *_stub;
-	MixerChannel _channels[NUM_CHANNELS];
+	System *sys;
 
-	Mixer(SystemStub *stub);
+	// Since the virtal machine and SDL are running simultaneously in two different threads
+	// any read or write to an elements of the sound channels MUST be synchronized with a 
+	// mutex.
+	MixerChannel _channels[AUDIO_NUM_CHANNELS];
+
+	Mixer(System *stub);
 	void init();
 	void free();
 
-	void playChannel(uint8 channel, const MixerChunk *mc, uint16 freq, uint8 volume);
-	void stopChannel(uint8 channel);
-	void setChannelVolume(uint8 channel, uint8 volume);
+	void playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume);
+	void stopChannel(uint8_t channel);
+	void setChannelVolume(uint8_t channel, uint8_t volume);
 	void stopAll();
-	void mix(int8 *buf, int len);
+	void mix(int8_t *buf, int len);
 
-	static void mixCallback(void *param, uint8 *buf, int len);
+	static void mixCallback(void *param, uint8_t *buf, int len);
 
 	void saveOrLoad(Serializer &ser);
 };

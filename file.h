@@ -32,15 +32,15 @@ struct File {
 	bool open(const char *filename, const char *directory, const char *mode="rb");
 	void close();
 	bool ioErr() const;
-	void seek(int32 off);
-	void read(void *ptr, uint32 size);
-	uint8 readByte();
-	uint16 readUint16BE();
-	uint32 readUint32BE();
-	void write(void *ptr, uint32 size);
-	void writeByte(uint8 b);
-	void writeUint16BE(uint16 n);
-	void writeUint32BE(uint32 n);
+	void seek(int32_t off);
+	void read(void *ptr, uint32_t size);
+	uint8_t readByte();
+	uint16_t readUint16BE();
+	uint32_t readUint32BE();
+	void write(void *ptr, uint32_t size);
+	void writeByte(uint8_t b);
+	void writeUint16BE(uint16_t n);
+	void writeUint32BE(uint32_t n);
 };
 
 #endif

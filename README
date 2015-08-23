@@ -1,3 +1,22 @@
+This is "Fabother World": an Another World (Out Of This World in North America) interpreter codebase. This work is based on:
+
+- Piotr Padkowski's newRaw interpreter which was based on
+- Gregory Montoir's reverse engineering of
+- Eric Chahi's assembly code.
+
+I cleaned up a lot of the code, removing cryptic hexadecimal notation
+with meaningful macros name. I also cleanup a lot of the code so it has a 
+C/C++ philosophy instead of an assembly structure.
+
+I also created a Visual Studio 2010 project.
+
+TODO:
+
+Create a MacOS X project.
+Add a different rendering path OpenGL support.
+
+Fabien Sanglard
+
 
 raw README
 Release version: 0.1.1 (May 15 2004)

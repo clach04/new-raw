@@ -16,49 +16,49 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-#include "logic.h"
+#include "vm.h"
 #include "resource.h"
 #include "video.h"
 
 
-const Logic::OpcodeStub Logic::_opTable[] = {
+const VirtualMachine::OpcodeStub VirtualMachine::opcodeTable[] = {
 	/* 0x00 */
-	&Logic::op_movConst,
-	&Logic::op_mov,
-	&Logic::op_add,
-	&Logic::op_addConst,
+	&VirtualMachine::op_movConst,
+	&VirtualMachine::op_mov,
+	&VirtualMachine::op_add,
+	&VirtualMachine::op_addConst,
 	/* 0x04 */
-	&Logic::op_call,
-	&Logic::op_ret,
-	&Logic::op_break,
-	&Logic::op_jmp,
+	&VirtualMachine::op_call,
+	&VirtualMachine::op_ret,
+	&VirtualMachine::op_pauseThread,
+	&VirtualMachine::op_jmp,
 	/* 0x08 */
-	&Logic::op_setScriptSlot,
-	&Logic::op_jnz,
-	&Logic::op_condJmp,
-	&Logic::op_setPalette,
+	&VirtualMachine::op_setSetVect,
+	&VirtualMachine::op_jnz,
+	&VirtualMachine::op_condJmp,
+	&VirtualMachine::op_setPalette,
 	/* 0x0C */
-	&Logic::op_resetScript,
-	&Logic::op_selectPage,
-	&Logic::op_fillPage,
-	&Logic::op_copyPage,
+	&VirtualMachine::op_resetThread,
+	&VirtualMachine::op_selectVideoPage,
+	&VirtualMachine::op_fillVideoPage,
+	&VirtualMachine::op_copyVideoPage,
 	/* 0x10 */
-	&Logic::op_updateDisplay,
-	&Logic::op_halt,
-	&Logic::op_drawString,
-	&Logic::op_sub,
+	&VirtualMachine::op_blitFramebuffer,
+	&VirtualMachine::op_killThread,
+	&VirtualMachine::op_drawString,
+	&VirtualMachine::op_sub,
 	/* 0x14 */
-	&Logic::op_and,
-	&Logic::op_or,
-	&Logic::op_shl,
-	&Logic::op_shr,
+	&VirtualMachine::op_and,
+	&VirtualMachine::op_or,
+	&VirtualMachine::op_shl,
+	&VirtualMachine::op_shr,
 	/* 0x18 */
-	&Logic::op_playSound,
-	&Logic::op_updateMemList,
-	&Logic::op_playMusic
+	&VirtualMachine::op_playSound,
+	&VirtualMachine::op_updateMemList,
+	&VirtualMachine::op_playMusic
 };
 
-const uint16 Logic::_freqTable[] = {
+const uint16_t VirtualMachine::frequenceTable[] = {
 	0x0CFF, 0x0DC3, 0x0E91, 0x0F6F, 0x1056, 0x114E, 0x1259, 0x136C, 
 	0x149F, 0x15D9, 0x1726, 0x1888, 0x19FD, 0x1B86, 0x1D21, 0x1EDE, 
 	0x20AB, 0x229C, 0x24B3, 0x26D7, 0x293F, 0x2BB2, 0x2E4C, 0x3110, 
@@ -66,20 +66,9 @@ const uint16 Logic::_freqTable[] = {
 	0x5240, 0x5764, 0x5C9A, 0x61C8, 0x6793, 0x6E19, 0x7485, 0x7BBD
 };
 
-const uint16 Resource::_memListParts[][4] = {
-	{ 0x14, 0x15, 0x16, 0x00 }, // protection screens
-	{ 0x17, 0x18, 0x19, 0x00 }, // introduction
-	{ 0x1A, 0x1B, 0x1C, 0x11 },
-	{ 0x1D, 0x1E, 0x1F, 0x11 },
-	{ 0x20, 0x21, 0x22, 0x11 },
-	{ 0x23, 0x24, 0x25, 0x00 },
-	{ 0x26, 0x27, 0x28, 0x11 },
-	{ 0x29, 0x2A, 0x2B, 0x11 },
-	{ 0x7D, 0x7E, 0x7F, 0x00 },
-	{ 0x7D, 0x7E, 0x7F, 0x00 }  // password screen
-};
 
-const uint8 Video::_font[] = {
+
+const uint8_t Video::_font[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x00,
 	0x28, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0x7E, 0x24, 0x24, 0x7E, 0x24, 0x00,
 	0x08, 0x3E, 0x48, 0x3C, 0x12, 0x7C, 0x10, 0x00, 0x42, 0xA4, 0x48, 0x10, 0x24, 0x4A, 0x84, 0x00,
@@ -130,6 +119,7 @@ const uint8 Video::_font[] = {
 	0x38, 0x44, 0x82, 0x82, 0x44, 0x28, 0xEE, 0x00, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA
 };
 
+
 const StrEntry Video::_stringsTableEng[] = {
 	{ 0x001, "P E A N U T  3000" },
 	{ 0x002, "Copyright  } 1990 Peanut Computer, Inc.\nAll rights reserved.\n\nCDOS Version 5.01" },
@@ -178,6 +168,7 @@ const StrEntry Video::_stringsTableEng[] = {
 	{ 0x036, "   Practical verification Y/N ?" },
 	{ 0x037, "SURE ?" },
 	{ 0x038, "MODIFICATION OF PARAMETERS\nRELATING TO PARTICLE\nACCELERATOR (SYNCHROTRON)." },
+	//{ 0x039, "       SUCK MY DICK !!!" },
 	{ 0x039, "       RUN EXPERIMENT ?" },
 	{ 0x03C, "t---t" },
 	{ 0x03D, "000 ~" },
@@ -271,7 +262,7 @@ const StrEntry Video::_stringsTableEng[] = {
 	{ 0x193, "Monsieur est en parfaite sante." },
 	{ 0x194, "Y\n" },
 	{ 0x193, "AU BOULOT !!!\n" },
-	{ 0xFFFF, "" }
+	{ END_OF_STRING_DICTIONARY, "" }
 };
 
 const StrEntry Video::_stringsTableDemo[] = {

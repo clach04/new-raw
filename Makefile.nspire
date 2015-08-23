@@ -1,13 +1,13 @@
 
-SDL_CFLAGS = `sdl-config --cflags`
-SDL_LIBS = `sdl-config --libs`
+SDL_CFLAGS = -I/usr/include/SDL
+SDL_LIBS = -lSDL -lm -flto -Wl,--as-needed
 
 #comment this line and uncomment the one below it to force detection
-DEFINES:= -DAUTO_DETECT_PLATFORM
+DEFINES:= -DSYS_LITTLE_ENDIAN -DNSPIRE
 #DEFINES = -DSYS_LITTLE_ENDIAN
 
-CXX = g++
-CXXFLAGS:= -Os -g -std=gnu++98 -fno-rtti -fno-exceptions -Wall -Wno-unknown-pragmas -Wshadow
+CXX = nspire-g++
+CXXFLAGS:= -Ofast -marm -march=armv5te -mtune=arm926ej-s -std=gnu++98 -fno-rtti -fno-exceptions -Wall -Wno-unknown-pragmas -Wshadow
 CXXFLAGS+= -Wundef -Wwrite-strings -Wnon-virtual-dtor -Wno-multichar
 CXXFLAGS+= $(SDL_CFLAGS) $(DEFINES)
 
@@ -19,8 +19,14 @@ SRCS = bank.cpp file.cpp engine.cpp mixer.cpp resource.cpp parts.cpp vm.cpp \
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(SRCS:.cpp=.d)
 
+all: game gen
+
+gen:
+	genzehn --input game --output anotherworld.tns --compress
+	make-prg anotherworld.tns another.tns
+
 game: $(OBJS)
-	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(SDL_LIBS) -lz
+	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(SDL_LIBS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -MMD -c $< -o $*.o
